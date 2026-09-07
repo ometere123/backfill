@@ -15,7 +15,10 @@
     "network:guard": "node scripts/network-guard.mjs",
     "contracts:compile": "python -m py_compile contracts/backfill_rounds.py contracts/backfill_pool.py",
     "contracts:test": "python -m pytest tests/direct -q",
-    "contract:sha": "node scripts/contract-sha.mjs"
+    "contract:sha": "node scripts/contract-sha.mjs",
+    "genvm:lint": "genvm-lint check contracts/backfill_rounds.py && genvm-lint check contracts/backfill_pool.py",
+    "genvm:schema": "genvm-lint schema contracts/backfill_rounds.py --output artifacts/backfill_rounds.schema.json && genvm-lint schema contracts/backfill_pool.py --output artifacts/backfill_pool.schema.json",
+    "genvm:typecheck": "genvm-lint typecheck contracts/backfill_rounds.py && genvm-lint typecheck contracts/backfill_pool.py"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
