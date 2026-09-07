@@ -29,7 +29,7 @@ export default function Settlement() {
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to read settlement state"); }
   };
-  useEffect(() => { if(account) void load(); }, [epochId,account]);
+  useEffect(() => { void load(); }, [epochId,account]);
   const canRefund = Boolean(epoch && pool && account && pool.status === "POOL_FINALIZED" && Number(epoch.total_weight) === 0 && credit > 0n && (!refund || refund.status === "NONE"));
   return <div className="mx-auto max-w-6xl px-6 pb-24 pt-14">
     <div className="mono text-xs uppercase">Epoch {epochId} / settlement</div>

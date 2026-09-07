@@ -1,19 +1,20 @@
 "use client";
 import {useEffect, useState} from "react";
 import {config} from "@/lib/config";
-import {connectWallet, ensureStudionet, normalizeWalletError} from "@/lib/genlayer/wallet";
+import {normalizeWalletError} from "@/lib/genlayer/wallet";
+import {useWallet} from "@/components/wallet-provider";
 import {explorerTx, getPendingTransactions, resumeAndConfirm, writeClient, writeAndConfirm, type TxStage} from "@/lib/genlayer/client";
 import {TxLifecycle} from "@/components/tx-lifecycle";
 
 export function ContractAction({contract, method, args, value = 0n, label, onComplete, onBeforeSubmit, actionKey}: {contract: "rounds" | "pool"; method: string; args: unknown[]; value?: bigint; label: string; onComplete?: () => Promise<void> | void; onBeforeSubmit?: () => Promise<void> | void; actionKey?: string}) {
-  const [stage, setStage] = useState<TxStage>(); const [error, setError] = useState(""); const [hash, setHash] = useState(""); const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<TxStage>(); const [error, setError] = useState(""); const [hash, setHash] = useState(""); const [busy, setBusy] = useState(false); const {ensureWriteReady}=useWallet();
   const address = contract === "rounds" ? config.rounds : config.pool;
   const effectiveActionKey = actionKey || `${address}:${method}:${JSON.stringify(args, (_key, item) => typeof item === "bigint" ? `${item}n` : item)}`;
   useEffect(() => { const pending = getPendingTransactions().find(item => item.actionKey === effectiveActionKey); if (!pending) return; setHash(pending.hash); setStage(pending.stage); setBusy(true); void resumeAndConfirm(pending.hash, setStage, async () => { await onComplete?.(); }).catch(e => setError(e instanceof Error ? e.message : "Unable to resume transaction")).finally(() => setBusy(false)); }, [effectiveActionKey]);
   async function submit() {
     if (busy) return;
     if (!address) { setError(`${contract} contract address is not configured`); return; }
-    try { setBusy(true); setError(""); await onBeforeSubmit?.(); const {address: account,provider} = await connectWallet(); await ensureStudionet(provider); await writeAndConfirm(writeClient(account, provider), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: effectiveActionKey, contract: address, onSubmitted: setHash}); }
+    try { setBusy(true); setError(""); await onBeforeSubmit?.(); const {address: account,provider} = await ensureWriteReady(); await writeAndConfirm(writeClient(account, provider), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: `${effectiveActionKey}:${account.toLowerCase()}`, contract: address, onSubmitted: setHash}); }
     catch (e) { setError(normalizeWalletError(e)); }
     finally { setBusy(false); }
   }
