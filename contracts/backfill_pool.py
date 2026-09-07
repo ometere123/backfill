@@ -56,7 +56,7 @@ class BackfillPool(gl.Contract):
         self.pools[pool["epoch_id"]] = _json(pool)
 
     def _rounds(self):
-        return gl.get_contract_at(self.rounds, Rounds).view()
+        return Rounds(self.rounds).view()
 
     def _settlement(self, key):
         raw = self.settlements.get(key)

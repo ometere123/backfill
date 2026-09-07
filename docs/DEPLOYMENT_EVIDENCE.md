@@ -1,28 +1,41 @@
-# Studionet deployment evidence
+# Backfill deployment evidence
 
-Network: Studionet, chain ID 61999, RPC `https://studio.genlayer.com/api`.
+This file separates evidence from local tests. It records only transactions and readbacks that were actually observed.
 
-The current contract pair is:
+## Reviewed deployment
 
-- Rounds: `0xc3F379AE897a64685e6152C2a3447ca1E477B646`
-- Pool: `0x8Aff07B4c5757117F502576C1c835CBE8A4647B1`
+- Reviewed contract commit: `b0b25a4efad3e2ff70f0382271274957a948e3c0`
+- Network: GenLayer Studionet, chain ID `61999`
+- RPC: `https://studio.genlayer.com/api`
+- Explorer: `https://explorer-studio.genlayer.com`
+- Rounds: `0xd08Af2Eb6541B449907d8be614E0A43c2D3De7eA`
+- Rounds deployment transaction: `0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429`
+- Pool: `0xA4DAfAcd536d5Ec52935C7d474b3E0D87B97Bf1d`
+- Pool deployment transaction: `0xc3fbf32e6df3b0c9143bbde4d076d52cffe602ceb45cfdcdeb159d349d5ac3ea`
 
-Deployment transactions:
+Explorer links:
 
-- Rounds deployment: `0x36329a860b74739496eefac0d2dbb00da76ee9a2e785783953ccd0402ac57606`
-- Pool deployment: `0x3f1b59d945fd4622611ec25310f4f3a569ab4593c4b0adfb7784161e3ea1db74`
+- [Rounds deployment](https://explorer-studio.genlayer.com/tx/0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429)
+- [Pool deployment](https://explorer-studio.genlayer.com/tx/0xc3fbf32e6df3b0c9143bbde4d076d52cffe602ceb45cfdcdeb159d349d5ac3ea)
 
-Canonical reads performed after deployment:
+## Live readbacks
 
-- `Rounds.get_epoch_count()` returned `0` before the live epoch was created.
-- `Rounds` schema exposed the lifecycle methods and `get_epoch_count`.
-- `Pool.get_pool(999)` rejected with the contract's `pool does not exist` error.
+`genlayer schema` returned the expected public methods for both contracts. The pool schema includes `fund` as payable and exposes `get_settlement`, `reconcile_claim`, `retry_claim`, `refund_unallocated`, and `reconcile_refund`.
 
-Live lifecycle transactions currently recorded:
+The first typed-argument pool deployment attempts were rejected as evidence because their finalized receipts contained constructor argument errors. They are intentionally not listed as the current deployment.
 
-- Epoch creation: `0xcf0c16f26b310bad39dd3b0d2b3d0cb951a78d91609efe6e378fcc7f69fa18e5`; consensus result returned epoch `1`.
-- Epoch opening: `0x9e9c1b5e87149afef5d0cdb96ad575efee8cb4e176edbd60ecce844146608b74`.
+## Local executable evidence
 
-The first malformed-argument epoch transaction and the first pool deployment are intentionally not used as the current deployment evidence. The current pool address is the redeployment after correcting constructor address decoding.
+- `python -m pytest tests/direct -q`: 8 passed.
+- `node scripts/frontend-tests.mjs`: passed.
+- `node_modules\\.bin\\vitest.cmd run`: 6 passed.
+- `node_modules\\.bin\\tsc.cmd --noEmit`: passed.
+- `node_modules\\.bin\\eslint.cmd .`: passed.
+- `node_modules\\.bin\\next.cmd build`: passed.
+- `C:\\Users\\USER\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe -m py_compile contracts/backfill_rounds.py contracts/backfill_pool.py`: passed.
 
-The remaining funded pool, claim evaluation, challenge/finalization, claim transfer, frontend hosting, and balance-change evidence are not recorded here because the installed CLI does not expose a payable message-value option and no wallet signing session was available for a safe GEN transfer. This is an explicit limitation, not a simulated result.
+These local tests do not prove native GEN movement. No wallet-funded lifecycle, balance reconciliation, public frontend URL, or payout transaction is claimed here because those artifacts were not independently observed in this environment.
+
+## Known deployment limitations
+
+The checked-in `genlayer-js` is `1.1.8`, whose installed client exposes `estimateTransactionGas` but not the fee-estimation method documented by current GenLayer SDK documentation. The frontend therefore refuses an unpriced write instead of submitting without protocol fees. A browser wallet session and a newer compatible SDK are required before live frontend writes can be accepted as demonstrated evidence.
