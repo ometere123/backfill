@@ -11,6 +11,7 @@ def test_pool_settlement_defaults_are_idempotent_and_no_unsafe_retry_surface(dir
     assert pool.get_settlement(7, 3)["status"] == "NONE"
     assert pool.get_refund_settlement(7, direct_alice)["status"] == "NONE"
     assert pool.get_funder_credit(7, direct_alice) == 0
+    assert pool.is_claimed(7, 3) is False
     assert not hasattr(pool, "retry_claim")
     assert not hasattr(pool, "reconcile_claim")
     assert not hasattr(pool, "reconcile_refund")

@@ -1,17 +1,51 @@
 "use client";
+
 import {createContext,useContext,useEffect,useMemo,useState} from "react";
-import {config} from "@/lib/config";
-import {discoverInjectedWallets,disconnectWallet,ensureStudionet,normalizeWalletError,type EIP1193Provider,type InjectedWallet,STUDIONET_CHAIN_ID} from "@/lib/genlayer/wallet";
+import {BACKFILL_ADDRESS_KEY,ensureStudionet,getWindowProvider,normalizeWalletError,STUDIONET_CHAIN_ID,type EIP1193Provider} from "@/lib/genlayer/wallet";
+
 type WalletStatus="DISCONNECTED"|"CONNECTING"|"CONNECTED"|"WRONG_NETWORK";
 type Session={address:string;provider:EIP1193Provider};
-type WalletContextValue={wallets:InjectedWallet[];selectedWallet?:InjectedWallet;provider?:EIP1193Provider;address:string;chainId:string;status:WalletStatus;error:string;connect:(walletId?:string)=>Promise<string>;switchToStudionet:()=>Promise<void>;ensureWriteReady:()=>Promise<Session>;selectWallet:(id:string)=>void;disconnect:()=>void};
-const Context=createContext<WalletContextValue|undefined>(undefined);const selectedKey="backfill.wallet.rdns";
-export function WalletProvider({children}:{children:React.ReactNode}){const [wallets,setWallets]=useState<InjectedWallet[]>([]);const [selectedWallet,setSelectedWallet]=useState<InjectedWallet>();const [provider,setProvider]=useState<EIP1193Provider>();const [address,setAddress]=useState("");const [chainId,setChainId]=useState("");const [status,setStatus]=useState<WalletStatus>("DISCONNECTED");const [error,setError]=useState("");
- const choose=(wallet:InjectedWallet)=>{setSelectedWallet(wallet);setProvider(wallet.provider);if(typeof localStorage!=="undefined")localStorage.setItem(selectedKey,wallet.id)};
- useEffect(()=>{discoverInjectedWallets().then(list=>{setWallets(list);const saved=typeof localStorage!=="undefined"?localStorage.getItem(selectedKey):null;const wallet=list.find(w=>w.id===saved)||list.find(w=>w.provider===window.ethereum);if(wallet)choose(wallet)}).catch(()=>undefined)},[]);
- useEffect(()=>{if(!provider)return;const accountsChanged=(v:unknown)=>{const a=(v as string[])[0]||"";setAddress(a);if(a&&typeof localStorage!=="undefined")localStorage.setItem("backfill.account",a);setStatus(a?(chainId.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK"):"DISCONNECTED")};const chainChanged=(v:unknown)=>{const c=String(v);setChainId(c);setStatus(address?(c.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK"):"DISCONNECTED")};const disconnected=()=>{setAddress("");setChainId("");setStatus("DISCONNECTED")};provider.on?.("accountsChanged",accountsChanged);provider.on?.("chainChanged",chainChanged);provider.on?.("disconnect",disconnected);return()=>{provider.removeListener?.("accountsChanged",accountsChanged);provider.removeListener?.("chainChanged",chainChanged);provider.removeListener?.("disconnect",disconnected)}},[provider,address,chainId]);
- const connect=async(walletId?:string)=>{const wallet=wallets.find(w=>w.id===walletId)||selectedWallet||(wallets.length===1?wallets[0]:undefined);if(!wallet){setError("Choose an injected wallet to connect.");return ""}choose(wallet);setStatus("CONNECTING");setError("");try{const accounts=await wallet.provider.request({method:"eth_requestAccounts"}) as string[];const a=accounts?.[0];if(!a)throw new Error("Wallet returned no account.");setAddress(a);if(typeof localStorage!=="undefined")localStorage.setItem("backfill.account",a);const c=String(await wallet.provider.request({method:"eth_chainId"}));setChainId(c);if(c.toLowerCase()!==STUDIONET_CHAIN_ID){try{await ensureStudionet(wallet.provider)}catch(e){setStatus("WRONG_NETWORK");setError(normalizeWalletError(e));return a}}const finalChain=String(await wallet.provider.request({method:"eth_chainId"}));setChainId(finalChain);setStatus(finalChain.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK");return a}catch(e){setError(normalizeWalletError(e));setStatus(address?"WRONG_NETWORK":"DISCONNECTED");return ""}};
- const switchToStudionet=async()=>{if(!provider){setError("Choose an injected wallet first.");return}setStatus("CONNECTING");setError("");try{await ensureStudionet(provider);const c=String(await provider.request({method:"eth_chainId"}));setChainId(c);if(c.toLowerCase()!==STUDIONET_CHAIN_ID)throw new Error("Wallet is not on GenLayer Studionet (61999).");setStatus("CONNECTED")}catch(e){setError(normalizeWalletError(e));setStatus("WRONG_NETWORK")}};
- const ensureWriteReady=async()=>{if(!provider||!address)throw new Error("Connect an injected wallet before writing.");await ensureStudionet(provider);const c=String(await provider.request({method:"eth_chainId"}));setChainId(c);if(c.toLowerCase()!==STUDIONET_CHAIN_ID){setStatus("WRONG_NETWORK");throw new Error("Wallet is not on GenLayer Studionet (61999).")};setStatus("CONNECTED");return {address,provider}};
- const value=useMemo(()=>({wallets,selectedWallet,provider,address,chainId,status,error,connect,switchToStudionet,ensureWriteReady,selectWallet:(id:string)=>{const w=wallets.find(x=>x.id===id);if(w)choose(w)},disconnect:()=>{disconnectWallet();setAddress("");setChainId("");setStatus("DISCONNECTED")}}),[wallets,selectedWallet,provider,address,chainId,status,error]);return <Context.Provider value={value}>{children}</Context.Provider>}
-export function useWallet(){const v=useContext(Context);if(!v)throw new Error("useWallet must be used inside WalletProvider");return v}
+type WalletContextValue={provider?:EIP1193Provider;address:string;chainId:string;status:WalletStatus;error:string;connect:()=>Promise<string>;switchToStudionet:()=>Promise<void>;ensureWriteReady:()=>Promise<Session>;disconnect:()=>void};
+const Context=createContext<WalletContextValue|undefined>(undefined);
+
+export function WalletProvider({children}:{children:React.ReactNode}) {
+  const [provider,setProvider]=useState<EIP1193Provider>();
+  const [address,setAddress]=useState("");
+  const [chainId,setChainId]=useState("");
+  const [status,setStatus]=useState<WalletStatus>("DISCONNECTED");
+  const [error,setError]=useState("");
+
+  const applyChain=(next:string,current=address)=>{setChainId(next);setStatus(current?(next.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK"):"DISCONNECTED")};
+  const applyAccount=(next:string)=>{setAddress(next);if(next) window.localStorage.setItem(BACKFILL_ADDRESS_KEY,next);else window.localStorage.removeItem(BACKFILL_ADDRESS_KEY);setStatus(next?(chainId.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK"):"DISCONNECTED")};
+
+  useEffect(()=>{
+    if(typeof window === "undefined" || !window.ethereum) return;
+    const current=window.ethereum;setProvider(current);
+    const saved=window.localStorage.getItem(BACKFILL_ADDRESS_KEY);
+    if(saved) {setAddress(saved);setStatus("WRONG_NETWORK");}
+    void Promise.all([
+      current.request({method:"eth_accounts"}) as Promise<string[]>,
+      current.request({method:"eth_chainId"}) as Promise<string>,
+    ]).then(([accounts,chain])=>{
+      const authorized=(accounts||[]).find(a=>!saved||a.toLowerCase()===saved.toLowerCase())||"";
+      if(saved && !authorized) {window.localStorage.removeItem(BACKFILL_ADDRESS_KEY);setAddress("");setStatus("DISCONNECTED");}
+      else if(authorized) {setAddress(authorized);setStatus(String(chain).toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK");}
+      setChainId(String(chain));
+    }).catch(()=>setError("Studionet RPC is currently unavailable."));
+    const accountsChanged=(value:unknown)=>applyAccount((value as string[]|undefined)?.[0]||"");
+    const chainChanged=(value:unknown)=>applyChain(String(value));
+    const disconnected=()=>{setAddress("");setChainId("");setStatus("DISCONNECTED");window.localStorage.removeItem(BACKFILL_ADDRESS_KEY);};
+    current.on?.("accountsChanged",accountsChanged);current.on?.("chainChanged",chainChanged);current.on?.("disconnect",disconnected);
+    return()=>{current.removeListener?.("accountsChanged",accountsChanged);current.removeListener?.("chainChanged",chainChanged);current.removeListener?.("disconnect",disconnected)};
+  },[]);
+
+  const connect=async()=>{
+    let current:EIP1193Provider;
+    try {current=provider||getWindowProvider();setProvider(current);setStatus("CONNECTING");setError("");const accounts=await current.request({method:"eth_requestAccounts"}) as string[];const next=accounts?.[0];if(!next) throw new Error("Wallet returned no account.");setAddress(next);window.localStorage.setItem(BACKFILL_ADDRESS_KEY,next);const chain=String(await current.request({method:"eth_chainId"}));applyChain(chain,next);if(chain.toLowerCase()!==STUDIONET_CHAIN_ID) await ensureStudionet(current);const finalChain=String(await current.request({method:"eth_chainId"}));setChainId(finalChain);setStatus(finalChain.toLowerCase()===STUDIONET_CHAIN_ID?"CONNECTED":"WRONG_NETWORK");return next;} catch(e){setError(normalizeWalletError(e));setStatus(address?"WRONG_NETWORK":"DISCONNECTED");return "";}
+  };
+  const switchToStudionet=async()=>{if(!provider){setError("No injected wallet provider detected.");return}setStatus("CONNECTING");setError("");try{await ensureStudionet(provider);const chain=String(await provider.request({method:"eth_chainId"}));applyChain(chain);if(chain.toLowerCase()!==STUDIONET_CHAIN_ID) throw new Error("Wallet is not on GenLayer Studionet (61999).");}catch(e){setError(normalizeWalletError(e));setStatus("WRONG_NETWORK")}};
+  const ensureWriteReady=async()=>{const current=provider||getWindowProvider();const accounts=await current.request({method:"eth_accounts"}) as string[];const actual=accounts?.[0]||"";if(!address||!actual||actual.toLowerCase()!==address.toLowerCase()) throw new Error("Connect the displayed wallet account before writing.");let chain=String(await current.request({method:"eth_chainId"}));if(chain.toLowerCase()!==STUDIONET_CHAIN_ID){await ensureStudionet(current);chain=String(await current.request({method:"eth_chainId"}))}setChainId(chain);if(chain.toLowerCase()!==STUDIONET_CHAIN_ID){setStatus("WRONG_NETWORK");throw new Error("Wallet is not on GenLayer Studionet (61999).")}setStatus("CONNECTED");return {address,provider:current};};
+  const value=useMemo(()=>({provider,address,chainId,status,error,connect,switchToStudionet,ensureWriteReady,disconnect:()=>{window.localStorage.removeItem(BACKFILL_ADDRESS_KEY);setAddress("");setChainId("");setStatus("DISCONNECTED");setError("")}}),[provider,address,chainId,status,error]);
+  return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+export function useWallet(){const value=useContext(Context);if(!value) throw new Error("useWallet must be used inside WalletProvider");return value;}

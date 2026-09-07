@@ -69,7 +69,7 @@ class BackfillPool(gl.Contract):
             _fail("funding is closed for this epoch")
         if gl.message.value <= 0:
             _fail("funding value must be positive")
-        pool = _load(self.pools[epoch_id]) if self.pools.get(epoch_id) else {"epoch_id": epoch_id, "funded": 0, "claimed": 0, "refunded": 0, "total_weight": 0, "status": "OPEN"}
+        pool = _load(self.pools[epoch_id]) if self.pools.get(epoch_id) else {"epoch_id": epoch_id, "funded": 0, "reserved": 0, "refunded": 0, "total_weight": 0, "status": "OPEN"}
         pool["funded"] += int(gl.message.value)
         key = str(epoch_id) + "|" + str(gl.message.sender_address)
         self.funder_credit[key] = self.funder_credit.get(key, 0) + gl.message.value
@@ -96,7 +96,7 @@ class BackfillPool(gl.Contract):
         if pool["total_weight"] <= 0:
             _fail("epoch has no distributable weight")
         amount = (int(pool["funded"]) * int(claim["weight"])) // int(pool["total_weight"])
-        if amount <= 0 or int(pool["claimed"]) + amount > int(pool["funded"]):
+        if amount <= 0 or int(pool["reserved"]) + amount > int(pool["funded"]):
             _fail("pool cannot cover claim")
         recipient = Recipient(Address(claim["claimant"]))
         settlement = {"status": "PENDING", "type": "CLAIM", "epoch_id": epoch_id, "claim_id": claim_id, "recipient": claim["claimant"], "amount": amount, "attempts": int(settlement["attempts"]) + 1, "identity": "claim:" + str(epoch_id) + ":" + str(claim_id)}
@@ -104,7 +104,7 @@ class BackfillPool(gl.Contract):
         # Studionet exposes this emitted transfer as a triggered child transaction.
         # The contract cannot read that child receipt, so the reservation remains
         # PENDING and there is deliberately no unsafe balance-based retry.
-        pool["claimed"] += amount
+        pool["reserved"] += amount
         self._save_pool(pool)
         recipient.emit_transfer(value=u256(amount))
 
@@ -158,4 +158,4 @@ class BackfillPool(gl.Contract):
 
     @gl.public.view
     def is_claimed(self, epoch_id: int, claim_id: int):
-        return self._settlement(str(epoch_id) + "|" + str(claim_id))["status"] == "PAID"
+        return self._settlement(str(epoch_id) + "|" + str(claim_id))["status"] in ("PENDING", "PAID")

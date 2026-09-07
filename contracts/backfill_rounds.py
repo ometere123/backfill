@@ -11,7 +11,8 @@ MAX_TEXT = 2400
 MAX_URL = 320
 MAX_REASON = 600
 MAX_EXCERPT = 500
-MAX_SOURCES = 5
+MAX_CLAIM_SOURCES = 4
+MAX_REVIEW_SOURCES = 5
 MIN_SOURCES = 2
 MAX_EVAL_ATTEMPTS = 3
 BANDS = {"NONE": 0, "USEFUL": 1, "MATERIAL": 3, "CRITICAL": 6, "FOUNDATIONAL": 10}
@@ -101,7 +102,7 @@ def _load(raw):
     return json.loads(raw)
 
 
-def _validate_decision(data, max_source=MAX_SOURCES):
+def _validate_decision(data, max_source=MAX_REVIEW_SOURCES):
     if not isinstance(data, dict):
         return False
     enums = {
@@ -114,9 +115,9 @@ def _validate_decision(data, max_source=MAX_SOURCES):
     }
     if any(data.get(k) not in values for k, values in enums.items()):
         return False
-    if not isinstance(data.get("evidence"), list) or len(data["evidence"]) > MAX_SOURCES:
+    if not isinstance(data.get("evidence"), list) or len(data["evidence"]) > MAX_REVIEW_SOURCES:
         return False
-    if not isinstance(data.get("reason"), str) or len(data["reason"]) > MAX_REASON:
+    if not isinstance(data.get("reason"), str) or not data["reason"].strip() or len(data["reason"]) > MAX_REASON:
         return False
     seen = []
     for item in data["evidence"]:
@@ -167,9 +168,9 @@ class BackfillRounds(gl.Contract):
         scope = _bounded(scope, MAX_TEXT, "scope")
         types = _bounded(types, MAX_TEXT, "types")
         project_scope = _bounded(project_scope, MAX_TEXT, "project scope")
-        if work_cutoff <= 0 or claims_open < work_cutoff or claims_close <= claims_open or challenge_close < claims_close:
+        if work_cutoff <= 0 or claims_open < work_cutoff or claims_close <= claims_open or challenge_close <= claims_close:
             _fail("invalid epoch deadlines")
-        if max_claims < 1 or max_claims > 100 or min_sources < MIN_SOURCES or min_sources > MAX_SOURCES:
+        if max_claims < 1 or max_claims > 100 or min_sources < MIN_SOURCES or min_sources > MAX_CLAIM_SOURCES:
             _fail("invalid epoch bounds")
         epoch_id = self.next_epoch
         self.next_epoch += 1
@@ -182,7 +183,7 @@ class BackfillRounds(gl.Contract):
         epoch = self._epoch(epoch_id)
         if str(gl.message.sender_address) != epoch["creator"]:
             _fail("only the epoch creator may open it")
-        if epoch["status"] != "DRAFT" or _now() < epoch["claims_open"]:
+        if epoch["status"] != "DRAFT" or _now() < epoch["claims_open"] or _now() >= epoch["claims_close"]:
             _fail("epoch cannot be opened yet")
         epoch["status"] = "CLAIMS_OPEN"
         self._save_epoch(epoch)
@@ -205,12 +206,12 @@ class BackfillRounds(gl.Contract):
             _fail("evidence URLs must be distinct")
         if len(set(_domain(url) for url in present)) < epoch["min_sources"]:
             _fail("evidence must span the configured number of independent domains")
-        fingerprint = hashlib.sha256((str(epoch_id) + "|" + primary_url).encode()).hexdigest()
+        fingerprint = hashlib.sha256((str(epoch_id) + "|" + urls[1]).encode()).hexdigest()
         if self.claim_fingerprint.get(fingerprint):
             _fail("duplicate contribution reference")
         claim_id = self.next_claim
         self.next_claim += 1
-        claim = {"id": int(claim_id), "epoch_id": int(epoch_id), "claimant": str(gl.message.sender_address), "title": title, "type": contribution_type, "repo_url": repo_url, "primary_url": primary_url, "secondary_url": secondary_url, "corroboration_url": corroboration_url, "submitted_at": _now(), "status": "SUBMITTED", "impact_band": "NONE", "weight": 0, "duplicate_signal": "NONE", "reason": "", "evidence": [], "attempts": 0, "last_error": "", "challenge_used": False, "challenge_status": "NONE", "challenge_reason": "", "challenge_url": "", "challenge_original_status": "", "challenge_original_impact_band": "NONE", "challenge_original_weight": 0, "challenge_original_duplicate_signal": "NONE", "challenge_original_reason": "", "challenge_original_evidence": [], "challenge_original_last_error": ""}
+        claim = {"id": int(claim_id), "epoch_id": int(epoch_id), "claimant": str(gl.message.sender_address), "title": title, "type": contribution_type, "repo_url": urls[0], "primary_url": urls[1], "secondary_url": urls[2], "corroboration_url": urls[3], "submitted_at": _now(), "status": "SUBMITTED", "impact_band": "NONE", "weight": 0, "duplicate_signal": "NONE", "reason": "", "evidence": [], "attempts": 0, "last_error": "", "challenge_used": False, "challenge_status": "NONE", "challenge_reason": "", "challenge_url": "", "challenge_original_status": "", "challenge_original_impact_band": "NONE", "challenge_original_weight": 0, "challenge_original_duplicate_signal": "NONE", "challenge_original_reason": "", "challenge_original_evidence": [], "challenge_original_last_error": ""}
         self.claim_fingerprint[fingerprint] = claim_id
         self.epoch_claims[str(epoch_id) + "|" + str(epoch["claim_count"])] = claim_id
         epoch["claim_count"] += 1
@@ -260,7 +261,7 @@ class BackfillRounds(gl.Contract):
             result = gl.nondet.exec_prompt(prompt + "|claim=" + _json(claim) + "|sources=" + _json(bodies), response_format="json")
             if not _validate_decision(result, len(urls)):
                 raise gl.vm.UserError(ERROR_LLM + " malformed decision")
-            if result["eligibility"] == "ELIGIBLE" and not self._grounded(result, bodies, urls, epoch["min_sources"]):
+            if result["eligibility"] in ("ELIGIBLE", "INELIGIBLE") and not self._grounded(result, bodies, urls, epoch["min_sources"]):
                 raise gl.vm.UserError(ERROR_EXTERNAL + " evidence was not grounded")
             result["_bodies"] = bodies
             return result
@@ -270,10 +271,10 @@ class BackfillRounds(gl.Contract):
             try:
                 validator_result = run_review()
                 leader = leader_result.calldata
-                decision_fields = ("eligibility", "attribution", "completion", "scope_match", "impact_band", "duplicate_signal", "evidence", "reason")
+                decision_fields = ("eligibility", "attribution", "completion", "scope_match", "impact_band", "duplicate_signal")
                 if any(leader[field] != validator_result[field] for field in decision_fields):
                     return False
-                return self._grounded(leader, validator_result["_bodies"], urls, epoch["min_sources"]) if leader["eligibility"] == "ELIGIBLE" else True
+                return self._grounded(leader, validator_result["_bodies"], urls, epoch["min_sources"]) if leader["eligibility"] in ("ELIGIBLE", "INELIGIBLE") else True
             except Exception:
                 return False
         # Keep fetched validator material local and use a second explicit source pass for excerpt grounding.
@@ -282,9 +283,9 @@ class BackfillRounds(gl.Contract):
         return result
 
     def _apply_result(self, claim, epoch, result, previous_weight=None):
-        if not isinstance(result, dict) or not _validate_decision(result, MAX_SOURCES):
+        if not isinstance(result, dict) or not _validate_decision(result, MAX_REVIEW_SOURCES):
             claim["status"] = "INCONCLUSIVE"; claim["weight"] = 0; claim["impact_band"] = "NONE"; claim["last_error"] = "validator disagreement or malformed result"; return
-        eligible = result["eligibility"] == "ELIGIBLE" and result["attribution"] == "CONFIRMED" and result["completion"] == "CONFIRMED_BEFORE_CUTOFF" and result["scope_match"] == "YES" and len(result["evidence"]) >= epoch["min_sources"]
+        eligible = result["eligibility"] == "ELIGIBLE" and result["attribution"] == "CONFIRMED" and result["completion"] == "CONFIRMED_BEFORE_CUTOFF" and result["scope_match"] == "YES" and result["duplicate_signal"] == "NONE" and len(result["evidence"]) >= epoch["min_sources"]
         if result["eligibility"] == "INCONCLUSIVE":
             eligible = False
             claim["status"] = "INCONCLUSIVE"
@@ -299,7 +300,7 @@ class BackfillRounds(gl.Contract):
         claim["impact_band"] = band if claim["weight"] else "NONE"
         claim["duplicate_signal"] = result["duplicate_signal"]
         claim["reason"] = result["reason"][:MAX_REASON]
-        claim["evidence"] = result["evidence"][:MAX_SOURCES]
+        claim["evidence"] = result["evidence"][:MAX_REVIEW_SOURCES]
         claim["last_error"] = ""
 
     @gl.public.write

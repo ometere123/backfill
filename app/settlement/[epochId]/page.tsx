@@ -35,7 +35,7 @@ export default function Settlement() {
     <div className="mono text-xs uppercase">Epoch {epochId} / settlement</div>
     <h1 className="serif mt-5 text-7xl leading-none">Canonical settlement state.</h1>
     {error ? <p className="mt-10 border-l-4 border-[var(--coral)] p-4">{error}</p> : !epoch || !pool ? <p className="mt-10 mono">Reading pool and epoch state…</p> : <>
-      <div className="mt-12 grid gap-6 md:grid-cols-4">{[["Epoch", epoch.status], ["Pool", pool.status], ["Funded", formatGen(BigInt(pool.funded||0))], ["Reserved", formatGen(BigInt(pool.claimed||0)+BigInt(pool.refunded||0))]].map(([k, v]) => <div className="plate p-5" key={k}><div className="mono text-xs uppercase">{k}</div><div className="serif mt-3 text-3xl break-all">{v}</div></div>)}</div>
+      <div className="mt-12 grid gap-6 md:grid-cols-4">{[["Epoch", epoch.status], ["Pool", pool.status], ["Funded", formatGen(BigInt(pool.funded||0))], ["Reserved", formatGen(BigInt(pool.reserved||0)+BigInt(pool.refunded||0))]].map(([k, v]) => <div className="plate p-5" key={k}><div className="mono text-xs uppercase">{k}</div><div className="serif mt-3 text-3xl break-all">{v}</div></div>)}</div>
       <div className="mt-10 flex flex-wrap gap-4">
         {epoch.status === "FINALIZED" && pool.status === "OPEN" && <ContractAction contract="pool" method="finalize_pool" args={[Number(epochId)]} label="Finalize pool" onComplete={load} />}
         {canRefund && <ContractAction contract="pool" method="refund_unallocated" args={[Number(epochId)]} label="Refund zero-weight pool" onComplete={load} actionKey={`refund:${epochId}:${account.toLowerCase()}`} />}

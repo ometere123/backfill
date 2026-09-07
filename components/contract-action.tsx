@@ -1,22 +1,15 @@
 "use client";
-import {useEffect, useState} from "react";
+import {useEffect,useState} from "react";
 import {config} from "@/lib/config";
 import {normalizeWalletError} from "@/lib/genlayer/wallet";
-import {useWallet} from "@/components/wallet-provider";
-import {explorerTx, getPendingTransactions, resumeAndConfirm, writeClient, writeAndConfirm, type TxStage} from "@/lib/genlayer/client";
+import {explorerTx,findTriggeredTransfer,getPendingTransactions,readContract,resumeAndConfirm,writeClient,writeAndConfirm,type TxStage} from "@/lib/genlayer/client";
 import {TxLifecycle} from "@/components/tx-lifecycle";
-
-export function ContractAction({contract, method, args, value = 0n, label, onComplete, onBeforeSubmit, actionKey}: {contract: "rounds" | "pool"; method: string; args: unknown[]; value?: bigint; label: string; onComplete?: () => Promise<void> | void; onBeforeSubmit?: () => Promise<void> | void; actionKey?: string}) {
-  const [stage, setStage] = useState<TxStage>(); const [error, setError] = useState(""); const [hash, setHash] = useState(""); const [busy, setBusy] = useState(false); const {ensureWriteReady}=useWallet();
-  const address = contract === "rounds" ? config.rounds : config.pool;
-  const effectiveActionKey = actionKey || `${address}:${method}:${JSON.stringify(args, (_key, item) => typeof item === "bigint" ? `${item}n` : item)}`;
-  useEffect(() => { const pending = getPendingTransactions().find(item => item.actionKey === effectiveActionKey); if (!pending) return; setHash(pending.hash); setStage(pending.stage); setBusy(true); void resumeAndConfirm(pending.hash, setStage, async () => { await onComplete?.(); }).catch(e => setError(e instanceof Error ? e.message : "Unable to resume transaction")).finally(() => setBusy(false)); }, [effectiveActionKey]);
-  async function submit() {
-    if (busy) return;
-    if (!address) { setError(`${contract} contract address is not configured`); return; }
-    try { setBusy(true); setError(""); await onBeforeSubmit?.(); const {address: account,provider} = await ensureWriteReady(); await writeAndConfirm(writeClient(account, provider), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: `${effectiveActionKey}:${account.toLowerCase()}`, contract: address, onSubmitted: setHash}); }
-    catch (e) { setError(normalizeWalletError(e)); }
-    finally { setBusy(false); }
-  }
-  return <div><button disabled={busy} className="button coral disabled:opacity-50" onClick={submit}>{busy ? "Waiting for finality…" : label}</button><TxLifecycle stage={stage}/>{hash && <p className="mt-3 text-xs">Transaction: <a className="underline" target="_blank" rel="noreferrer" href={explorerTx(hash)}>{hash}</a></p>}{error && <p className="mt-3 text-sm text-[var(--coral)]">{error}</p>}</div>;
+import {useWallet} from "@/components/wallet-provider";
+type Result={hash:string};
+export function ContractAction({contract,method,args,value=0n,label,onComplete,onBeforeSubmit,actionKey,transferRecipient,transferAmount}:{contract:"rounds"|"pool";method:string;args:unknown[];value?:bigint;label:string;onComplete?:(result?:Result)=>Promise<void>|void;onBeforeSubmit?:()=>Promise<void>|void;actionKey?:string;transferRecipient?:string;transferAmount?:bigint}){
+ const [stage,setStage]=useState<TxStage>();const [error,setError]=useState("");const [hash,setHash]=useState("");const [child,setChild]=useState<any>();const [busy,setBusy]=useState(false);const {ensureWriteReady,address:connectedAddress,chainId}=useWallet();const contractAddress=contract==="rounds"?config.rounds:config.pool;const effectiveActionKey=actionKey||`${contractAddress}:${method}:${JSON.stringify(args,(_key,item)=>typeof item==="bigint"?`${item}n`:item)}`;
+ useEffect(()=>{const pending=getPendingTransactions(connectedAddress,"0xf22f").find(item=>item.actionKey===`${effectiveActionKey}:${connectedAddress.toLowerCase()}`);if(!pending)return;setHash(pending.hash);setStage(pending.stage);setBusy(true);void resumeAndConfirm(pending.hash,setStage,async()=>{await onComplete?.({hash:pending.hash})}).catch(e=>setError(normalizeWalletError(e))).finally(()=>setBusy(false))},[effectiveActionKey,connectedAddress,chainId,onComplete]);
+ async function observeChild(parent:string,sessionAddress?:string){let recipient=transferRecipient;let amount=transferAmount;if((method==="claim"||method==="refund_unallocated")&&!recipient){try{const settlement:any=method==="claim"?await readContract(config.pool,"get_settlement",[args[0],args[1]]):await readContract(config.pool,"get_refund_settlement",[args[0],sessionAddress]);recipient=String(settlement?.recipient||"");amount=BigInt(String(settlement?.amount||0))}catch(e){setError(e instanceof Error?e.message:"Unable to read settlement for child transfer");return}}if(!recipient||amount===undefined)return;try{setChild(await findTriggeredTransfer(parent,recipient,amount))}catch(e){setError(e instanceof Error?e.message:"Unable to observe child transfer")}}
+ async function submit(){if(busy)return;if(!contractAddress){setError(`${contract} contract address is not configured`);return}try{setBusy(true);setError("");await onBeforeSubmit?.();const session=await ensureWriteReady();const result=await writeAndConfirm(writeClient(session.address,session.provider),contractAddress,method,args,value,setStage,undefined,{actionKey:`${effectiveActionKey}:${session.address.toLowerCase()}`,account:session.address,chainId:"0xf22f",contract:contractAddress,onSubmitted:setHash});await observeChild(result.hash,session.address);await onComplete?.(result)}catch(e){setError(normalizeWalletError(e))}finally{setBusy(false)}}
+ return <div><button disabled={busy} className="button coral disabled:opacity-50" onClick={submit}>{busy?"Waiting for finality…":label}</button><TxLifecycle stage={stage}/>{hash&&<p className="mt-3 text-xs">Parent transaction: <a className="underline" target="_blank" rel="noreferrer" href={explorerTx(hash)}>{hash}</a></p>}{child&&<div className="mt-3 border-l-4 border-[var(--blue)] pl-3 text-xs">Child GEN transfer: <a className="underline" target="_blank" rel="noreferrer" href={explorerTx(child.hash)}>{child.hash}</a><br/>Recipient: {transferRecipient||"canonical settlement recipient"}<br/>Amount: {transferAmount?.toString()||"canonical settlement amount"} wei<br/>Result: observed</div>}{error&&<p className="mt-3 text-sm text-[var(--coral)]">{error}</p>}</div>;
 }

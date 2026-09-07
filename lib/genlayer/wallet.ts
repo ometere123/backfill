@@ -1,11 +1,60 @@
 import {config} from "../config";
-export type EIP1193Provider={request(args:{method:string;params?:unknown[]}):Promise<unknown>;on?:(event:string,listener:(value:unknown)=>void)=>void;removeListener?:(event:string,listener:(value:unknown)=>void)=>void};
-export type InjectedWallet={id:string;name:string;rdns?:string;icon?:string;provider:EIP1193Provider};
-type Detail={info?:{uuid?:string;name?:string;rdns?:string;icon?:string};provider:EIP1193Provider};
-declare global{interface Window{ethereum?:EIP1193Provider}}
-export const shortAddress=(a:string)=>`${a.slice(0,6)}…${a.slice(-4)}`;export const STUDIONET_CHAIN_ID=`0x${config.chainId.toString(16)}`;
-export async function discoverInjectedWallets():Promise<InjectedWallet[]>{if(typeof window==="undefined")return [];const found:InjectedWallet[]=[];const add=(detail:Detail)=>{if(!detail?.provider)return;const id=detail.info?.rdns||detail.info?.uuid||`injected-${found.length}`;if(!found.some(w=>w.provider===detail.provider))found.push({id,name:detail.info?.name||"Injected wallet",rdns:detail.info?.rdns,icon:detail.info?.icon,provider:detail.provider})};if(typeof window.addEventListener==="function"){const listener=(event:Event)=>add((event as CustomEvent<Detail>).detail);window.addEventListener("eip6963:announceProvider",listener);if(typeof window.dispatchEvent==="function")window.dispatchEvent(new Event("eip6963:requestProvider"));await new Promise(resolve=>setTimeout(resolve,0));window.removeEventListener("eip6963:announceProvider",listener)}const injected=window.ethereum as (EIP1193Provider&{providers?:EIP1193Provider[]})|undefined;const providers=Array.isArray(injected?.providers)?injected.providers:(injected?[injected]:[]);providers.forEach((provider,index)=>add({provider,info:{name:"Injected wallet",uuid:`injected-${index}`}}));return found}
-export async function getInjectedProvider(selectedId?:string):Promise<EIP1193Provider>{const wallets=await discoverInjectedWallets();if(!wallets.length)throw new Error("No injected wallet provider detected.");return (wallets.find(w=>w.id===selectedId)||wallets[0]).provider}
-export async function ensureStudionet(provider:EIP1193Provider){let chain=String(await provider.request({method:"eth_chainId"}));if(chain.toLowerCase()!==STUDIONET_CHAIN_ID){try{await provider.request({method:"wallet_switchEthereumChain",params:[{chainId:STUDIONET_CHAIN_ID}]})}catch(error){const code=(error as {code?:number})?.code;if(code===4902){try{await provider.request({method:"wallet_addEthereumChain",params:[{chainId:STUDIONET_CHAIN_ID,chainName:"GenLayer Studionet",nativeCurrency:{name:"GEN",symbol:"GEN",decimals:18},rpcUrls:[config.rpc],blockExplorerUrls:[config.explorer]}]});await provider.request({method:"wallet_switchEthereumChain",params:[{chainId:STUDIONET_CHAIN_ID}]})}catch(addError){throw addError}}else if(code===4001)throw new Error("Network switch rejected in wallet.");else if(code===-32601||String((error as {message?:unknown})?.message).toLowerCase().includes("method not found"))throw new Error("This injected wallet does not support automatic network switching. Choose another injected wallet or add GenLayer Studionet manually.");else throw error}}chain=String(await provider.request({method:"eth_chainId"}));if(chain.toLowerCase()!==STUDIONET_CHAIN_ID)throw new Error("Wallet is not on GenLayer Studionet (61999).")}
-export function normalizeWalletError(error:unknown){const code=(error as {code?:number})?.code;const message=String((error as {message?:unknown})?.message??error).toLowerCase();if(code===4001||message.includes("user rejected"))return message.includes("switch")||message.includes("network")?"Network switch rejected in wallet.":"Transaction rejected in wallet.";if(message.includes("unsupported")||message.includes("method not found")||code===-32601)return "This injected wallet does not support automatic network switching. Choose another injected wallet or add GenLayer Studionet manually.";if(message.includes("chain")||message.includes("network"))return "Switch your injected wallet to GenLayer Studionet (61999).";if(message.includes("rpc")||message.includes("fetch")||message.includes("timeout"))return "Studionet RPC is currently unavailable.";return "Wallet transaction could not be submitted."}
-export function disconnectWallet(){if(typeof window!=="undefined")localStorage.removeItem("backfill.account")}
+
+export type EIP1193Provider = {
+  request(args: {method: string; params?: unknown[]}): Promise<unknown>;
+  on?: (event: string, listener: (value: unknown) => void) => void;
+  removeListener?: (event: string, listener: (value: unknown) => void) => void;
+};
+
+declare global { interface Window { ethereum?: EIP1193Provider } }
+
+export const BACKFILL_ADDRESS_KEY = "backfill:address";
+export const STUDIONET_CHAIN_ID = `0x${config.chainId.toString(16)}`;
+
+export function getWindowProvider(): EIP1193Provider {
+  if (typeof window === "undefined" || !window.ethereum) throw new Error("No injected wallet provider detected.");
+  return window.ethereum;
+}
+
+export const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+
+export async function ensureStudionet(provider: EIP1193Provider): Promise<void> {
+  let chainId = String(await provider.request({method: "eth_chainId"}));
+  if (chainId.toLowerCase() !== STUDIONET_CHAIN_ID) {
+    try {
+      await provider.request({method: "wallet_switchEthereumChain", params: [{chainId: STUDIONET_CHAIN_ID}]});
+    } catch (error) {
+      const code = (error as {code?: number})?.code;
+      const message = String((error as {message?: unknown})?.message ?? "").toLowerCase();
+      if (code === 4902) {
+        await provider.request({method: "wallet_addEthereumChain", params: [{
+          chainId: STUDIONET_CHAIN_ID,
+          chainName: "GenLayer Studionet",
+          nativeCurrency: {name: "GEN", symbol: "GEN", decimals: 18},
+          rpcUrls: [config.rpc],
+          blockExplorerUrls: [config.explorer],
+        }]});
+        await provider.request({method: "wallet_switchEthereumChain", params: [{chainId: STUDIONET_CHAIN_ID}]});
+      } else if (code === 4001) throw new Error("Network switch rejected in wallet.");
+      else if (code === -32601 || message.includes("method not found") || message.includes("unsupported")) {
+        throw new Error("This injected wallet does not support automatic network switching. Choose another injected wallet or add GenLayer Studionet manually.");
+      } else throw error;
+    }
+  }
+  chainId = String(await provider.request({method: "eth_chainId"}));
+  if (chainId.toLowerCase() !== STUDIONET_CHAIN_ID) throw new Error("Wallet is not on GenLayer Studionet (61999).");
+}
+
+export function normalizeWalletError(error: unknown): string {
+  const code = (error as {code?: number})?.code;
+  const message = String((error as {message?: unknown})?.message ?? error).toLowerCase();
+  if (code === 4001 || message.includes("user rejected")) return message.includes("switch") || message.includes("network") ? "Network switch rejected in wallet." : "Transaction rejected in wallet.";
+  if (code === -32601 || message.includes("method not found") || message.includes("unsupported")) return "This injected wallet does not support automatic network switching. Choose another injected wallet or add GenLayer Studionet manually.";
+  if (message.includes("rpc") || message.includes("fetch") || message.includes("timeout")) return "Studionet RPC is currently unavailable.";
+  if (message.includes("chain") || message.includes("network")) return "Switch your injected wallet to GenLayer Studionet (61999).";
+  return "Wallet transaction could not be submitted.";
+}
+
+export function disconnectWallet(): void {
+  if (typeof window !== "undefined") window.localStorage.removeItem(BACKFILL_ADDRESS_KEY);
+}

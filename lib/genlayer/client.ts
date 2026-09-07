@@ -5,7 +5,7 @@ import {config} from "../config";
 import type {EIP1193Provider} from "./wallet";
 
 export type TxStage = "AWAITING_SIGNATURE" | "SUBMITTED" | "CONSENSUS" | "FINALIZED" | "EXECUTION_CONFIRMED" | "STATE_CONFIRMED" | "USER_REJECTED" | "WRONG_NETWORK" | "RPC_UNAVAILABLE" | "CONSENSUS_FAILURE" | "EXECUTION_ERROR" | "STATE_MISMATCH" | "CONTRACT_ERROR";
-export type StoredTransaction = {actionKey: string; contract: string; method: string; argsFingerprint: string; hash: string; submittedAt: number; stage: TxStage};
+export type StoredTransaction = {actionKey: string; account: string; chainId: string; contract: string; method: string; argsFingerprint: string; hash: string; submittedAt: number; stage: TxStage};
 const STORAGE_KEY = "backfill.transactions";
 
 export const readClient = createClient({chain: studionet});
@@ -14,12 +14,12 @@ export function explorerTx(hash: string) { return `${config.explorer}/tx/${hash}
 export async function readContract(address: string, functionName: string, args: any[] = []) { if (!address) throw new Error("Contract address is not configured in this deployment"); return readClient.readContract({address: address as `0x${string}`, functionName, args}); }
 export async function readEpoch(id: number) { return readContract(config.rounds, "get_epoch", [id]); }
 export type CanonicalCheck = () => Promise<void>;
-export type WriteServices = {waitForFinalization?: (args: {hash: string}) => Promise<any>; actionKey?: string; contract?: string; onSubmitted?: (hash: string) => void};
+export type WriteServices = {waitForFinalization?: (args: {hash: string}) => Promise<any>; actionKey?: string; account?: string; chainId?: string; contract?: string; onSubmitted?: (hash: string) => void};
 
 function fingerprint(args: any[]) { return JSON.stringify(args, (_key, value) => typeof value === "bigint" ? `${value}n` : value); }
 function readStored(): StoredTransaction[] { if (typeof window === "undefined" || !window.localStorage) return []; try { return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
 function writeStored(records: StoredTransaction[]) { if (typeof window !== "undefined" && window.localStorage) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
-export function getPendingTransactions() { return readStored().filter(record => !["STATE_CONFIRMED", "USER_REJECTED"].includes(record.stage)); }
+export function getPendingTransactions(account?: string, chainId?: string) { return readStored().filter(record => !["STATE_CONFIRMED", "USER_REJECTED"].includes(record.stage) && (!account || record.account?.toLowerCase()===account.toLowerCase()) && (!chainId || record.chainId?.toLowerCase()===chainId.toLowerCase())); }
 export function getTransaction(hash: string) { return readStored().find(record => record.hash === hash); }
 function remember(record: StoredTransaction) { const records = readStored().filter(item => item.actionKey !== record.actionKey); records.push(record); writeStored(records); }
 
@@ -57,7 +57,7 @@ export async function writeAndConfirm(client: any, address: string, functionName
     onStage?.("AWAITING_SIGNATURE");
     hash = await client.writeContract({address: address as `0x${string}`, functionName, args, value});
     if (!hash) throw new Error("Write did not return a transaction hash");
-    remember({actionKey, contract: services.contract || address, method: functionName, argsFingerprint: fingerprint(args), hash, submittedAt: Date.now(), stage: "SUBMITTED"});
+    remember({actionKey, account: services.account || "", chainId: services.chainId || "0x0", contract: services.contract || address, method: functionName, argsFingerprint: fingerprint(args), hash, submittedAt: Date.now(), stage: "SUBMITTED"});
     services.onSubmitted?.(hash);
     onStage?.("SUBMITTED");
     onStage?.("CONSENSUS");
