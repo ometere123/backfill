@@ -1,41 +1,62 @@
 # Backfill deployment evidence
 
-This file separates evidence from local tests. It records only transactions and readbacks that were actually observed.
+This record separates executable local/CI evidence from live Studionet evidence.
 
-## Reviewed deployment
+## Reviewed source and network
 
-- Reviewed contract commit: `b977d5282e90b557d50f278cc4a8726962b31680`
+- Git commit: `be2e018273099c5a6f96b80ff74929885d0ab098`
 - Network: GenLayer Studionet, chain ID `61999`
 - RPC: `https://studio.genlayer.com/api`
 - Explorer: `https://explorer-studio.genlayer.com`
-- Rounds: `0xd08Af2Eb6541B449907d8be614E0A43c2D3De7eA`
-- Rounds deployment transaction: `0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429`
-- Pool: `0xa189bc1D51255B1d15bD391A00979455c2D52aa2`
-- Pool deployment transaction: `0xc27559cf4fab7c0a88c72796f59009a45ee9af2db4c0e9103752ec06f5f3a43b`
+- `genlayer-js`: `1.1.8`
+- CLI: `0.39.2`
+- CLI signer: `0xb29ead15b1e8a2420fae84de974088f67a15ccc2` (key not recorded)
 
-Explorer links:
+## Fresh deployment
 
-- [Rounds deployment](https://explorer-studio.genlayer.com/tx/0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429)
-- [Pool deployment](https://explorer-studio.genlayer.com/tx/0xc27559cf4fab7c0a88c72796f59009a45ee9af2db4c0e9103752ec06f5f3a43b)
+Rounds:
 
-## Live readbacks
+- Address: `0xAF9C5681E33Ba589acA973DFDFd8819C8E25Ade3`
+- Deployment tx: `0xb68094bbb64e403b4fbb9ff5b3e1817c63b592a73ab61e7331daae94df859811`
+- Explorer: https://explorer-studio.genlayer.com/tx/0xb68094bbb64e403b4fbb9ff5b3e1817c63b592a73ab61e7331daae94df859811
+- Source: 22,004 bytes; SHA-256 `0d3aa7fb01bb19056072b5d888f4d30a1e8fbf0a3f44be0ea4dd39450d099f89`
+- Receipt: FINALIZED, `MAJORITY_AGREE`, leader execution `SUCCESS`.
+- Schema: includes epoch-local claim indexing, challenge, evaluation, and finalization methods.
 
-`genlayer schema` returned the expected public methods for both contracts. The pool schema includes `fund` as payable and exposes `get_settlement`, `reconcile_claim`, `retry_claim`, `refund_unallocated`, and `reconcile_refund`.
+Pool:
 
-The first typed-argument pool deployment attempts were rejected as evidence because their finalized receipts contained constructor argument errors. They are intentionally not listed as the current deployment.
+- Address: `0xDe2D2726E225F981ED5D8Bd241b4Ad0Aa9146918`
+- Deployment tx: `0x26b39e339670efc981357d3c0d39db6371e87cf91efde1a63cd22c8d872982f7`
+- Explorer: https://explorer-studio.genlayer.com/tx/0x26b39e339670efc981357d3c0d39db6371e87cf91efde1a63cd22c8d872982f7
+- Source: 7,089 bytes; SHA-256 `3137a11ea7cd4905f39318df17ddced368e95e50b92169549c0fef6a4261f76c`
+- Receipt: FINALIZED, `MAJORITY_AGREE`, leader execution `SUCCESS`.
+- Schema: constructor `rounds_address: string`; `fund` is payable; funder-credit and settlement views are present.
+- Rounds binding: deployment calldata was `{"args":[addr#af9c5681e33ba589aca973dfdfd8819c8e25ade3,]}`, exactly the final Rounds address.
 
-## Local executable evidence
+SDK source parity was checked byte-for-byte for both deployed source responses: both equal the final main files and their recorded byte counts/hashes.
 
-- `python -m pytest tests/direct -q`: 8 passed.
-- `node scripts/frontend-tests.mjs`: passed.
-- `node_modules\\.bin\\vitest.cmd run`: 6 passed.
-- `node_modules\\.bin\\tsc.cmd --noEmit`: passed.
-- `node_modules\\.bin\\eslint.cmd .`: passed.
-- `node_modules\\.bin\\next.cmd build`: passed.
-- `C:\\Users\\USER\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe -m py_compile contracts/backfill_rounds.py contracts/backfill_pool.py`: passed.
+The previous pair is superseded pre-hardening and is not current lifecycle evidence:
 
-These local tests do not prove native GEN movement. No wallet-funded lifecycle, balance reconciliation, public frontend URL, or payout transaction is claimed here because those artifacts were not independently observed in this environment.
+- `0xd08Af2Eb6541B449907d8be614E0A43c2D3De7eA`
+- `0xa189bc1D51255B1d15bD391A00979455c2D52aa2`
 
-## Known deployment limitations
+## Local and CI evidence
 
-Studionet uses the installed `genlayer-js@1.1.8` write path without a separate transaction-fee object. The frontend keeps payable `value` separate and submits the SDK write directly. A browser wallet session is still required before live frontend writes can be accepted as demonstrated evidence.
+- `npm ci`: passed.
+- `npm run network:guard`: passed.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm test`: 8 passed across 2 files.
+- `python -m pytest tests/direct -q`: 11 passed.
+- `python -m py_compile contracts/backfill_rounds.py contracts/backfill_pool.py`: passed.
+- `npm run build`: passed.
+- `genvm-lint` `0.11.0` fast lint: passed for both contracts, with view return-type warnings.
+- Direct harness runtime is pinned to GenVM `v0.2.16` in `tests/direct/conftest.py`.
+- CI: [run 34143595383](https://github.com/ometere123/backfill/actions/runs/34143595383) passed all configured steps.
+- Clean-install audit after pinning Vitest `3.2.6`: zero vulnerabilities reported.
+
+These checks do not prove native GEN movement or browser-wallet lifecycle state.
+
+## Settlement safety boundary
+
+Studionet `genlayer-js@1.1.8` writes do not receive a separate transaction-fee object. Payable value is passed independently. Native transfers are emitted as triggered child transactions; the contract records deterministic `PENDING` settlement and reserves accounting before emission because the contract cannot safely read a child receipt. The frontend correlates parent and child transaction IDs through the SDK. No unsafe balance-delta retry is exposed.
