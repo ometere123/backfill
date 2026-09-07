@@ -6,12 +6,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: {node-version: 20, cache: npm}
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: npm ci
+      - run: python -m pip install -r requirements-test.txt
+      - run: npm run network:guard
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
       - run: npm run contracts:compile
       - run: npm run contracts:test
-      - run: npm run network:guard
+      - run: npm run contract:sha
       - run: npm run build
