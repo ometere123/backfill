@@ -14,7 +14,7 @@ export function ContractAction({contract, method, args, value = 0n, label, onCom
     if (busy) return;
     if (!address) { setError(`${contract} contract address is not configured`); return; }
     try { setBusy(true); setError(""); const account = await connectWallet(); await writeAndConfirm(writeClient(account, window.ethereum!), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: effectiveActionKey, contract: address, onSubmitted: setHash}); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(e instanceof Error ? e.message : (()=>{try{return JSON.stringify(e)}catch{return String(e)}})()); }
     finally { setBusy(false); }
   }
   return <div><button disabled={busy} className="button coral disabled:opacity-50" onClick={submit}>{busy ? "Waiting for finality…" : label}</button><TxLifecycle stage={stage}/>{hash && <p className="mt-3 text-xs">Transaction: <a className="underline" target="_blank" rel="noreferrer" href={explorerTx(hash)}>{hash}</a></p>}{error && <p className="mt-3 text-sm text-[var(--coral)]">{error}</p>}</div>;
