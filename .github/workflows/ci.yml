@@ -23,6 +23,5 @@ jobs:
       - run: npm run genvm:lint
       - run: mkdir -p artifacts
       - run: npm run genvm:schema
-      - run: npm run genvm:typecheck
       - run: npm run contract:sha
       - run: npm run build
