@@ -26,6 +26,7 @@ describe("write transaction safety", () => {
     client.writeContract=vi.fn(async(input:any)=>{request=input; return "0xabc";});
     const result=await writeAndConfirm(client,"0x0000000000000000000000000000000000000001","fund",[7],1000000000000000000n,s=>stages.push(s),async()=>{canonical++;},{waitForFinalization:async()=>receipt});
     expect(request.value).toBe(1000000000000000000n);
+    expect(client.connect).not.toHaveBeenCalled();
     expect(request.fees).toBeUndefined();
     expect(result.hash).toBe("0xabc");
     expect(canonical).toBe(1);

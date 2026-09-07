@@ -2,13 +2,14 @@ import {createClient} from "genlayer-js";
 import {studionet} from "genlayer-js/chains";
 import {TransactionStatus, ExecutionResult} from "genlayer-js/types";
 import {config} from "../config";
+import type {EIP1193Provider} from "./wallet";
 
 export type TxStage = "AWAITING_SIGNATURE" | "SUBMITTED" | "CONSENSUS" | "FINALIZED" | "EXECUTION_CONFIRMED" | "STATE_CONFIRMED" | "USER_REJECTED" | "WRONG_NETWORK" | "RPC_UNAVAILABLE" | "CONSENSUS_FAILURE" | "EXECUTION_ERROR" | "STATE_MISMATCH" | "CONTRACT_ERROR";
 export type StoredTransaction = {actionKey: string; contract: string; method: string; argsFingerprint: string; hash: string; submittedAt: number; stage: TxStage};
 const STORAGE_KEY = "backfill.transactions";
 
 export const readClient = createClient({chain: studionet});
-export function writeClient(address: string, provider: NonNullable<Window["ethereum"]>) { return createClient({chain: studionet, account: address as `0x${string}`, provider}); }
+export function writeClient(address: string, provider: EIP1193Provider) { return createClient({chain: studionet, account: address as `0x${string}`, provider}); }
 export function explorerTx(hash: string) { return `${config.explorer}/tx/${hash}`; }
 export async function readContract(address: string, functionName: string, args: any[] = []) { if (!address) throw new Error("Contract address is not configured in this deployment"); return readClient.readContract({address: address as `0x${string}`, functionName, args}); }
 export async function readEpoch(id: number) { return readContract(config.rounds, "get_epoch", [id]); }
@@ -54,7 +55,6 @@ export async function writeAndConfirm(client: any, address: string, functionName
   const actionKey = services.actionKey || `${address}:${functionName}:${fingerprint(args)}`;
   try {
     onStage?.("AWAITING_SIGNATURE");
-    await client.connect("studionet");
     hash = await client.writeContract({address: address as `0x${string}`, functionName, args, value});
     if (!hash) throw new Error("Write did not return a transaction hash");
     remember({actionKey, contract: services.contract || address, method: functionName, argsFingerprint: fingerprint(args), hash, submittedAt: Date.now(), stage: "SUBMITTED"});

@@ -1,22 +1,11 @@
 "use client";
 import Link from "next/link";
-import {useEffect, useState} from "react";
-import {Wallet, LogOut} from "lucide-react";
-import {config} from "@/lib/config";
-import {connectWallet, disconnectWallet, shortAddress} from "@/lib/genlayer/wallet";
+import {useState} from "react";
+import {Wallet, LogOut, Menu, X} from "lucide-react";
+import {useWallet} from "@/components/wallet-provider";
+import {shortAddress} from "@/lib/genlayer/wallet";
 
 export function SiteHeader() {
-  const [address, setAddress] = useState(""); const [error, setError] = useState("");
-  useEffect(() => {
-    if (!window.ethereum) return;
-    const refresh = async () => { const accounts = await window.ethereum!.request({method: "eth_accounts"}) as string[]; setAddress(accounts[0] || ""); if (accounts[0]) localStorage.setItem("backfill.account", accounts[0]); else disconnectWallet(); };
-    const chain = (id: string) => setError(id.toLowerCase() === `0x${config.chainId.toString(16)}` ? "" : `Wrong network. Switch to Studionet ${config.chainId}.`);
-    const accountsChanged = (accounts: string[]) => { setAddress(accounts[0] || ""); if (accounts[0]) localStorage.setItem("backfill.account", accounts[0]); else disconnectWallet(); };
-    refresh().catch(() => undefined); window.ethereum.request({method: "eth_chainId"}).then(chain).catch(() => undefined);
-    window.ethereum.on?.("accountsChanged", accountsChanged); window.ethereum.on?.("chainChanged", chain); window.ethereum.on?.("disconnect", disconnectWallet);
-    return () => { window.ethereum?.removeListener?.("accountsChanged", accountsChanged); window.ethereum?.removeListener?.("chainChanged", chain); window.ethereum?.removeListener?.("disconnect", disconnectWallet); };
-  }, []);
-  async function connect() { try { setError(""); setAddress(await connectWallet()); } catch (e) { setError(e instanceof Error ? e.message : "Wallet unavailable"); } }
-  function disconnect() { disconnectWallet(); setAddress(""); }
-  return <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6"><Link href="/" className="serif text-3xl font-bold">Backfill<span className="text-[var(--coral)]">.</span></Link><nav className="hidden gap-7 text-sm font-bold md:flex"><Link href="/epochs">Epochs</Link><Link href="/me">My work</Link><Link href="/docs">Method</Link></nav><div className="flex items-center gap-2">{error && <span className="mr-3 max-w-56 text-xs text-[var(--coral)]">{error}</span>}{address && <button aria-label="Disconnect wallet" className="button" onClick={disconnect}><LogOut size={16}/></button>}<button className="button" onClick={connect}><Wallet size={16}/>{address ? shortAddress(address) : "Connect wallet"}</button></div></header>;
+  const {address,status,error,connect,disconnect}=useWallet(); const [open,setOpen]=useState(false);
+  return <header className="mx-auto max-w-7xl px-6 py-6"><div className="flex items-center justify-between"><Link href="/" className="serif text-3xl font-bold">Backfill<span className="text-[var(--coral)]">.</span></Link><nav className="hidden gap-7 text-sm font-bold md:flex"><Link href="/epochs">Epochs</Link><Link href="/me">My work</Link><Link href="/docs">Method</Link></nav><div className="flex items-center gap-2">{status==="WRONG_NETWORK"&&<span className="mr-2 hidden max-w-56 text-xs text-[var(--coral)] sm:inline">Wrong network · switch to Studionet</span>}{error&&<span className="mr-2 hidden max-w-56 text-xs text-[var(--coral)] sm:inline">{error}</span>}{address&&<span aria-label="Connected wallet" className="button">{shortAddress(address)}</span>}{address&&<button aria-label="Disconnect wallet" className="button" onClick={disconnect}><LogOut size={16}/></button>}{!address&&<button className="button" disabled={status==="CONNECTING"} onClick={()=>void connect()}><Wallet size={16}/>{status==="CONNECTING"?"Connecting…":"Connect wallet"}</button>}<button aria-label="Open menu" className="button md:hidden" onClick={()=>setOpen(!open)}>{open?<X size={16}/>:<Menu size={16}/>}</button></div></div>{open&&<nav className="mt-5 grid gap-3 border-t border-[var(--ink)]/15 pt-4 text-sm font-bold md:hidden"><Link onClick={()=>setOpen(false)} href="/epochs">Epochs</Link><Link onClick={()=>setOpen(false)} href="/me">My work</Link><Link onClick={()=>setOpen(false)} href="/docs">Method</Link></nav>}</header>;
 }

@@ -5,3 +5,9 @@ export function genToWei(gen: bigint | number | string): bigint {
   if (value < 0n) throw new Error("GEN amount cannot be negative");
   return value * WEI_PER_GEN;
 }
+export function formatGen(wei: bigint | number | string): string {
+  const value = BigInt(wei);
+  const whole = value / WEI_PER_GEN;
+  const fraction = (value % WEI_PER_GEN).toString().padStart(18, "0").slice(0, 4);
+  return `${whole}.${fraction} GEN`;
+}
