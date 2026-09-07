@@ -28,12 +28,20 @@ class Rounds:
         def get_claim(self, claim_id: int) -> dict: ...
 
 
+@gl.evm.contract_interface
+class Recipient:
+    class View:
+        pass
+    class Write:
+        pass
+
+
 class BackfillPool(gl.Contract):
     rounds: Address
     pools: TreeMap[u256, str]
     funder_credit: TreeMap[str, u256]
     refunded: TreeMap[str, bool]
-    claimed: TreeMap[str, bool]
+    settlements: TreeMap[str, str]
 
     def __init__(self, rounds_address: str):
         # Direct harnesses may pass strings; network ABI decoding supplies Address values.
@@ -49,6 +57,10 @@ class BackfillPool(gl.Contract):
 
     def _rounds(self):
         return gl.get_contract_at(self.rounds, Rounds).view()
+
+    def _settlement(self, key):
+        raw = self.settlements.get(key)
+        return _load(raw) if raw else {"status": "NONE", "amount": 0, "before": 0, "attempts": 0}
 
     @gl.public.write.payable
     def fund(self, epoch_id: int):
@@ -78,18 +90,45 @@ class BackfillPool(gl.Contract):
         if pool["status"] != "POOL_FINALIZED" or claim["epoch_id"] != epoch_id or claim["status"] != "ELIGIBLE":
             _fail("claim is not finalized and eligible")
         key = str(epoch_id) + "|" + str(claim_id)
-        if self.claimed.get(key):
-            _fail("claim already paid")
+        settlement = self._settlement(key)
+        if settlement["status"] in ("PENDING", "PAID"):
+            _fail("claim already pending or paid")
         if pool["total_weight"] <= 0:
             _fail("epoch has no distributable weight")
         amount = (int(pool["funded"]) * int(claim["weight"])) // int(pool["total_weight"])
         if amount <= 0 or int(pool["claimed"]) + amount > int(pool["funded"]):
             _fail("pool cannot cover claim")
-        # Checks-effects-interactions: persist the exact-once guard before sending value.
-        self.claimed[key] = True
-        pool["claimed"] += amount
-        self._save_pool(pool)
-        gl.message.send(Address(claim["claimant"]), amount)
+        recipient = Recipient(Address(claim["claimant"]))
+        settlement = {"status": "PENDING", "amount": amount, "before": int(recipient.balance), "attempts": int(settlement["attempts"]) + 1}
+        self.settlements[key] = _json(settlement)
+        # The child transfer is finalized asynchronously. Accounting is committed only by reconcile_claim.
+        recipient.emit_transfer(value=u256(amount))
+
+    @gl.public.write
+    def reconcile_claim(self, epoch_id: int, claim_id: int):
+        pool = self._pool(epoch_id); claim = self._rounds().get_claim(claim_id); key = str(epoch_id) + "|" + str(claim_id)
+        settlement = self._settlement(key)
+        if claim["epoch_id"] != epoch_id or settlement["status"] != "PENDING":
+            _fail("claim is not pending")
+        recipient_balance = int(Recipient(Address(claim["claimant"])).balance)
+        if recipient_balance < int(settlement["before"]) + int(settlement["amount"]):
+            _fail("transfer is not finalized; retry reconciliation later")
+        if int(pool["claimed"]) + int(settlement["amount"]) > int(pool["funded"]):
+            _fail("pool accounting would exceed funding")
+        settlement["status"] = "PAID"; self.settlements[key] = _json(settlement); pool["claimed"] += int(settlement["amount"]); self._save_pool(pool)
+
+    @gl.public.write
+    def retry_claim(self, epoch_id: int, claim_id: int):
+        pool = self._pool(epoch_id); claim = self._rounds().get_claim(claim_id); key = str(epoch_id) + "|" + str(claim_id)
+        settlement = self._settlement(key)
+        if claim["epoch_id"] != epoch_id or settlement["status"] != "PENDING":
+            _fail("claim is not retryable")
+        recipient = Recipient(Address(claim["claimant"]))
+        if int(recipient.balance) != int(settlement["before"]):
+            _fail("recipient balance changed; reconcile instead of retrying")
+        if int(self.balance) < int(settlement["amount"]):
+            _fail("pool has no returned transfer balance")
+        settlement["attempts"] += 1; self.settlements[key] = _json(settlement); recipient.emit_transfer(value=u256(settlement["amount"]))
 
     @gl.public.write
     def refund_unallocated(self, epoch_id: int):
@@ -103,10 +142,24 @@ class BackfillPool(gl.Contract):
         credit = int(self.funder_credit.get(key, 0))
         if credit <= 0 or int(pool["refunded"]) + credit > int(pool["funded"]):
             _fail("no refundable credit")
-        self.refunded[key] = True
-        pool["refunded"] += credit
-        self._save_pool(pool)
-        gl.message.send(gl.message.sender_address, credit)
+        settlement_key = str(epoch_id) + "|refund|" + str(gl.message.sender_address)
+        settlement = self._settlement(settlement_key)
+        if settlement["status"] == "NONE":
+            settlement = {"status": "PENDING", "amount": credit, "before": int(Recipient(gl.message.sender_address).balance), "attempts": 1}
+            self.settlements[settlement_key] = _json(settlement)
+            Recipient(gl.message.sender_address).emit_transfer(value=u256(credit))
+        elif settlement["status"] == "PENDING":
+            _fail("refund already pending; reconcile later")
+        else:
+            _fail("funder credit already refunded")
+
+    @gl.public.write
+    def reconcile_refund(self, epoch_id: int):
+        pool = self._pool(epoch_id); key = str(epoch_id) + "|refund|" + str(gl.message.sender_address); settlement = self._settlement(key)
+        if settlement["status"] != "PENDING": _fail("refund is not pending")
+        if int(Recipient(gl.message.sender_address).balance) < int(settlement["before"]) + int(settlement["amount"]): _fail("refund is not finalized; retry reconciliation later")
+        if int(pool["refunded"]) + int(settlement["amount"]) > int(pool["funded"]): _fail("refund accounting would exceed funding")
+        settlement["status"] = "PAID"; self.settlements[key] = _json(settlement); self.refunded[key] = True; pool["refunded"] += int(settlement["amount"]); self._save_pool(pool)
 
     @gl.public.view
     def preview_claim(self, epoch_id: int, claim_id: int):
@@ -119,4 +172,13 @@ class BackfillPool(gl.Contract):
     def get_pool(self, epoch_id: int): return self._pool(epoch_id)
 
     @gl.public.view
-    def is_claimed(self, epoch_id: int, claim_id: int): return bool(self.claimed.get(str(epoch_id) + "|" + str(claim_id)))
+    def get_settlement(self, epoch_id: int, claim_id: int):
+        return self._settlement(str(epoch_id) + "|" + str(claim_id))
+
+    @gl.public.view
+    def get_refund_settlement(self, epoch_id: int, funder: str):
+        return self._settlement(str(epoch_id) + "|refund|" + str(funder))
+
+    @gl.public.view
+    def is_claimed(self, epoch_id: int, claim_id: int):
+        return self._settlement(str(epoch_id) + "|" + str(claim_id))["status"] == "PAID"
