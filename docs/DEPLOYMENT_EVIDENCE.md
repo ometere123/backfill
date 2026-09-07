@@ -4,19 +4,19 @@ This file separates evidence from local tests. It records only transactions and 
 
 ## Reviewed deployment
 
-- Reviewed contract commit: `b0b25a4efad3e2ff70f0382271274957a948e3c0`
+- Reviewed contract commit: `b977d5282e90b557d50f278cc4a8726962b31680`
 - Network: GenLayer Studionet, chain ID `61999`
 - RPC: `https://studio.genlayer.com/api`
 - Explorer: `https://explorer-studio.genlayer.com`
 - Rounds: `0xd08Af2Eb6541B449907d8be614E0A43c2D3De7eA`
 - Rounds deployment transaction: `0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429`
-- Pool: `0xA4DAfAcd536d5Ec52935C7d474b3E0D87B97Bf1d`
-- Pool deployment transaction: `0xc3fbf32e6df3b0c9143bbde4d076d52cffe602ceb45cfdcdeb159d349d5ac3ea`
+- Pool: `0xa189bc1D51255B1d15bD391A00979455c2D52aa2`
+- Pool deployment transaction: `0xc27559cf4fab7c0a88c72796f59009a45ee9af2db4c0e9103752ec06f5f3a43b`
 
 Explorer links:
 
 - [Rounds deployment](https://explorer-studio.genlayer.com/tx/0xc0dcddce7a6ce1a857db25a12aeaed3730fb9ed1a8ade7a46d1c1a2946453429)
-- [Pool deployment](https://explorer-studio.genlayer.com/tx/0xc3fbf32e6df3b0c9143bbde4d076d52cffe602ceb45cfdcdeb159d349d5ac3ea)
+- [Pool deployment](https://explorer-studio.genlayer.com/tx/0xc27559cf4fab7c0a88c72796f59009a45ee9af2db4c0e9103752ec06f5f3a43b)
 
 ## Live readbacks
 
