@@ -1,7 +1,7 @@
 "use client";
 import {useEffect, useState} from "react";
 import {config} from "@/lib/config";
-import {connectWallet, normalizeWalletError} from "@/lib/genlayer/wallet";
+import {connectWallet, ensureStudionet, normalizeWalletError} from "@/lib/genlayer/wallet";
 import {explorerTx, getPendingTransactions, resumeAndConfirm, writeClient, writeAndConfirm, type TxStage} from "@/lib/genlayer/client";
 import {TxLifecycle} from "@/components/tx-lifecycle";
 
@@ -13,7 +13,7 @@ export function ContractAction({contract, method, args, value = 0n, label, onCom
   async function submit() {
     if (busy) return;
     if (!address) { setError(`${contract} contract address is not configured`); return; }
-    try { setBusy(true); setError(""); await onBeforeSubmit?.(); const {address: account,provider} = await connectWallet(); await writeAndConfirm(writeClient(account, provider), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: effectiveActionKey, contract: address, onSubmitted: setHash}); }
+    try { setBusy(true); setError(""); await onBeforeSubmit?.(); const {address: account,provider} = await connectWallet(); await ensureStudionet(provider); await writeAndConfirm(writeClient(account, provider), address, method, args, value, setStage, async () => { await onComplete?.(); }, {actionKey: effectiveActionKey, contract: address, onSubmitted: setHash}); }
     catch (e) { setError(normalizeWalletError(e)); }
     finally { setBusy(false); }
   }
