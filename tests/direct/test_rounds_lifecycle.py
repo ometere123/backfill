@@ -66,7 +66,7 @@ def test_evaluation_requires_grounded_independent_sources_and_sets_weight(direct
     claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
     for index, url in enumerate(_urls(), start=1):
         direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
-    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 2, "excerpt": "source 2 confirms"}], "reason": "independent evidence supports the claim"}
+    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}], "reason": "independent evidence supports the claim"}
     direct_vm.mock_llm(r"evidence reviewer", json.dumps(decision))
     rounds.evaluate_claim(claim_id)
     claim = rounds.get_claim(claim_id)
@@ -103,7 +103,7 @@ def test_challenge_is_single_use_and_resolution_cannot_increase_weight(direct_vm
     claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
     for index, url in enumerate(_urls(), start=1):
         direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
-    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 2, "excerpt": "source 2 confirms"}], "reason": "supported"}
+    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}], "reason": "supported"}
     direct_vm.mock_llm(r"evidence reviewer", json.dumps(decision))
     rounds.evaluate_claim(claim_id)
     direct_vm.warp("1970-01-01T00:03:20Z")
@@ -112,7 +112,7 @@ def test_challenge_is_single_use_and_resolution_cannot_increase_weight(direct_vm
         rounds.challenge_claim(claim_id, "out of scope", "https://counter.example.edu/evidence")
     with direct_vm.expect_revert("cannot be challenged"):
         rounds.challenge_claim(claim_id, "out of scope", "https://counter2.example.edu/evidence")
-    challenge_decision = dict(decision); challenge_decision["eligibility"] = "INELIGIBLE"; challenge_decision["scope_match"] = "NO"; challenge_decision["impact_band"] = "NONE"; challenge_decision["evidence"] = [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 2, "excerpt": "source 2 confirms"}]
+    challenge_decision = dict(decision); challenge_decision["eligibility"] = "INELIGIBLE"; challenge_decision["scope_match"] = "NO"; challenge_decision["impact_band"] = "NONE"; challenge_decision["evidence"] = [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}]
     direct_vm.clear_mocks()
     for index, url in enumerate(_urls(), start=1):
         direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
@@ -137,3 +137,36 @@ def test_epoch_finalization_requires_terminal_claims(direct_vm, direct_deploy, d
     with direct_vm.expect_revert("terminal"):
         rounds.open_challenge(epoch_id)
     assert rounds.get_claim(claim_id)["status"] == "SUBMITTED"
+
+
+def test_epoch_local_claim_index_and_zero_weight_challenge_ceiling(direct_vm, direct_deploy, direct_alice, direct_bob):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice; direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args()); rounds.open_epoch(epoch_id); direct_vm.warp("1970-01-01T00:02:00Z")
+    claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    assert rounds.get_epoch_claim_id(epoch_id, 0) == claim_id
+    for index, url in enumerate(_urls(), start=1): direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
+    ineligible = {"eligibility": "INELIGIBLE", "attribution": "UNCLEAR", "completion": "UNCLEAR", "scope_match": "NO", "impact_band": "NONE", "duplicate_signal": "NONE", "evidence": [], "reason": "not enough qualifying scope"}
+    direct_vm.mock_llm(r"evidence reviewer", json.dumps(ineligible)); rounds.evaluate_claim(claim_id); assert rounds.get_claim(claim_id)["weight"] == 0
+    direct_vm.warp("1970-01-01T00:03:20Z"); rounds.open_challenge(epoch_id)
+    with direct_vm.prank(direct_bob): rounds.challenge_claim(claim_id, "out of scope", "https://counter.example.edu/evidence")
+    direct_vm.clear_mocks()
+    for index, url in enumerate(_urls(), start=1): direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
+    direct_vm.mock_web("https://counter.example.edu/evidence", {"status": 200, "body": "counter evidence"})
+    upgraded = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}], "reason": "apparently eligible"}
+    direct_vm.mock_llm(r"counter\.example\.edu", json.dumps(upgraded)); rounds.resolve_challenge(claim_id)
+    claim = rounds.get_claim(claim_id); assert claim["weight"] == 0; assert claim["challenge_status"] == "REJECTED"; assert claim["status"] == "INELIGIBLE"
+
+
+def test_inconclusive_challenge_preserves_original_claim(direct_vm, direct_deploy, direct_alice, direct_bob):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice; direct_vm.warp("1970-01-01T00:01:40Z"); epoch_id = rounds.create_epoch(*_epoch_args()); rounds.open_epoch(epoch_id); direct_vm.warp("1970-01-01T00:02:00Z"); claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    for index, url in enumerate(_urls(), start=1): direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
+    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}], "reason": "supported"}
+    direct_vm.mock_llm(r"evidence reviewer", json.dumps(decision)); rounds.evaluate_claim(claim_id); assert rounds.get_claim(claim_id)["weight"] == 3
+    direct_vm.warp("1970-01-01T00:03:20Z"); rounds.open_challenge(epoch_id)
+    with direct_vm.prank(direct_bob): rounds.challenge_claim(claim_id, "out of scope", "https://counter.example.edu/evidence")
+    direct_vm.clear_mocks()
+    for url in _urls(): direct_vm.mock_web(url, {"status": 503, "body": ""})
+    direct_vm.mock_web("https://counter.example.edu/evidence", {"status": 503, "body": ""}); rounds.resolve_challenge(claim_id)
+    claim = rounds.get_claim(claim_id); assert claim["status"] == "ELIGIBLE"; assert claim["weight"] == 3; assert claim["challenge_status"] == "INCONCLUSIVE"

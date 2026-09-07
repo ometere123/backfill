@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from "vitest";
-import {writeAndConfirm} from "../../lib/genlayer/client";
+import {getPendingTransactions, selectTriggeredTransfer, writeAndConfirm} from "../../lib/genlayer/client";
 
 function fakeClient(receipt:any={txExecutionResultName:"FINISHED_WITH_RETURN"}) {
   const client:any={
@@ -10,6 +10,16 @@ function fakeClient(receipt:any={txExecutionResultName:"FINISHED_WITH_RETURN"}) 
 }
 
 describe("write transaction safety", () => {
+  it("persists the hash immediately and retains it when finalization fails", async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {localStorage: {getItem: (key: string) => storage.get(key) || null, setItem: (key: string, value: string) => storage.set(key, value)}});
+    const {client}=fakeClient();
+    const submitted:string[]=[];
+    await expect(writeAndConfirm(client,"0x0000000000000000000000000000000000000001","fund",[7],0n,undefined,undefined,{actionKey:"resume-me",waitForFinalization:async()=>{expect(getPendingTransactions()[0].hash).toBe("0xabc"); throw new Error("rpc unavailable")},onSubmitted:hash=>submitted.push(hash)})).rejects.toThrow(/rpc unavailable/);
+    expect(submitted).toEqual(["0xabc"]);
+    expect(getPendingTransactions().find(item=>item.actionKey==="resume-me")?.hash).toBe("0xabc");
+    vi.unstubAllGlobals();
+  });
   it("sends payable value in wei and rereads canonical state", async () => {
     const {client,receipt}=fakeClient();
     const stages:string[]=[]; let canonical=0; let request:any;
@@ -39,5 +49,10 @@ describe("write transaction safety", () => {
     const {client}=fakeClient(); const stages:string[]=[];
     await expect(writeAndConfirm(client,"0x1","x",[],0n,s=>stages.push(s),undefined,{waitForFinalization:async()=>{throw new Error("consensus failed")}})).rejects.toThrow(/consensus/);
     expect(stages).toContain("CONSENSUS_FAILURE");
+  });
+
+  it("identifies a triggered child by parent-derived id, recipient, and exact value", () => {
+    const child = selectTriggeredTransfer("0xparent", ["0xwrong", "0xchild"], [{to:"0x0000000000000000000000000000000000000002", value:2n}, {recipient:"0x0000000000000000000000000000000000000001", value:"1000000000000000000"}], "0x0000000000000000000000000000000000000001", 1000000000000000000n);
+    expect(child?.hash).toBe("0xchild");
   });
 });
