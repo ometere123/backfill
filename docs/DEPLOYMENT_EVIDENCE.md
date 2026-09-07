@@ -38,4 +38,4 @@ These local tests do not prove native GEN movement. No wallet-funded lifecycle, 
 
 ## Known deployment limitations
 
-The checked-in `genlayer-js` is `1.1.8`, whose installed client exposes `estimateTransactionGas` but not the fee-estimation method documented by current GenLayer SDK documentation. The frontend therefore refuses an unpriced write instead of submitting without protocol fees. A browser wallet session and a newer compatible SDK are required before live frontend writes can be accepted as demonstrated evidence.
+Studionet uses the installed `genlayer-js@1.1.8` write path without a separate transaction-fee object. The frontend keeps payable `value` separate and submits the SDK write directly. A browser wallet session is still required before live frontend writes can be accepted as demonstrated evidence.
