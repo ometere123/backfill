@@ -4,7 +4,7 @@ Backfill is a retroactive public-goods funding ledger for critical open-source i
 
 ## Status
 
-This repository is deployment-ready for GenLayer Studionet 61999. No funded deployment is claimed here: contract addresses and transaction IDs remain unset until a funded signer performs the deployment.
+The current contract deployment targets GenLayer Studionet 61999. The deployed addresses and transaction evidence are recorded in [docs/DEPLOYMENT_EVIDENCE.md](docs/DEPLOYMENT_EVIDENCE.md); the funded payout lifecycle remains pending a payable wallet signing session.
 
 ## Run locally
 
@@ -18,7 +18,7 @@ npm run build
 npm run dev
 ```
 
-Set `NEXT_PUBLIC_ROUNDS_ADDRESS` and `NEXT_PUBLIC_POOL_ADDRESS` after deploying. The app never stores a key and never owns authoritative state.
+The checked-in `.env.example` points at the current deployed pair. The app never stores a key and never owns authoritative state.
 
 ## Network
 

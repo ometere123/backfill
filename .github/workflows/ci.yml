@@ -9,7 +9,9 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm run test
       - run: npm run contracts:compile
+      - run: npm run contracts:test
       - run: npm run network:guard
       - run: npm run build
