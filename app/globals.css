@@ -49,9 +49,10 @@
   .site-header .wallet-dot{width:.42rem;height:.42rem}
   .site-header .wallet-chevron{width:17px}
   footer{padding-top:2rem;padding-bottom:2rem}
+  .grain>section:first-child{padding-top:4.25rem}
 }
 @media (min-width:1200px){
-  .grain>section:first-child{padding-top:1.25rem;padding-bottom:3.5rem}
+  .grain>section:first-child{padding-top:3.25rem;padding-bottom:3.5rem}
   .grain>section:first-child>div:first-child{gap:2.5rem}
   .grain h1.serif{font-size:clamp(3.3rem,3.7vw,4.35rem);line-height:.96}
   .grain>section:first-child .plate{padding:1.1rem}
