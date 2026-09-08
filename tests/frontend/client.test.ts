@@ -1,5 +1,6 @@
 import {describe, expect, it, vi} from "vitest";
 import {getPendingTransactions, selectTriggeredTransfer, writeAndConfirm} from "../../lib/genlayer/client";
+import {nestedLeaderExecutionReceipt, nestedLeaderFailureReceipt, topLevelExecutionReceipt} from "./fixtures/studionet-receipts";
 
 function fakeClient(receipt:any={txExecutionResultName:"FINISHED_WITH_RETURN"}) {
   const client:any={
@@ -68,11 +69,24 @@ describe("write transaction safety", () => {
     vi.stubGlobal("window", {localStorage: {getItem: (key: string) => storage.get(key) || null, setItem: (key: string, value: string) => storage.set(key, value)}});
     const {client}=fakeClient();
     const stages:string[]=[];
-    const result=await writeAndConfirm(client,"0x1","open_epoch",[1],0n,s=>stages.push(s),undefined,{actionKey:"open:1",account:"0xabc",chainId:"0xf22f",waitForFinalization:async()=>({statusName:"FINALIZED",consensus_data:{leader_receipt:[{mode:"leader",execution_result:"SUCCESS"}]}})});
+    const result=await writeAndConfirm(client,"0x1","open_epoch",[1],0n,s=>stages.push(s),undefined,{actionKey:"open:1",account:"0xabc",chainId:"0xf22f",waitForFinalization:async()=>nestedLeaderExecutionReceipt});
     expect(result.hash).toBe("0xabc");
     expect(stages).toContain("EXECUTION_CONFIRMED");
     expect(getPendingTransactions("0xabc","0xf22f")).toHaveLength(0);
     vi.unstubAllGlobals();
+  });
+
+  it("accepts the top-level Studionet txExecutionResult shape", async () => {
+    const {client}=fakeClient(); const stages:string[]=[];
+    const result=await writeAndConfirm(client,"0x1","finalize_pool",[4],0n,s=>stages.push(s),undefined,{waitForFinalization:async()=>topLevelExecutionReceipt});
+    expect(result.receipt).toBe(topLevelExecutionReceipt);
+    expect(stages).toContain("EXECUTION_CONFIRMED");
+  });
+
+  it("rejects a failed nested Studionet leader receipt", async () => {
+    const {client}=fakeClient(); const stages:string[]=[];
+    await expect(writeAndConfirm(client,"0x1","refund_unallocated",[4],0n,s=>stages.push(s),undefined,{waitForFinalization:async()=>nestedLeaderFailureReceipt})).rejects.toThrow(/execution failed: REVERTED/);
+    expect(stages).toContain("EXECUTION_ERROR");
   });
 
   it("identifies a triggered child by parent-derived id, recipient, and exact value", () => {
