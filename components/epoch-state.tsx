@@ -66,6 +66,7 @@ export function EpochState({ id }: { id: number }) {
   const openReady = epoch.status === "DRAFT" && now >= Number(epoch.claims_open);
   const beforeClose = now < Number(epoch.claims_close);
   const settlementReady = Boolean(pool);
+  const claimsTerminal = claims.every((claim) => ["ELIGIBLE", "INELIGIBLE", "INCONCLUSIVE"].includes(claim.status));
   const confirmFund = async () => {
     const after: any = await readContractWithRetry(config.pool, "get_pool", [id]);
     const currentCredit = address ? BigInt(String(await readContractWithRetry(config.pool, "get_funder_credit", [id, address]))) : 0n;
@@ -77,6 +78,8 @@ export function EpochState({ id }: { id: number }) {
     if (epoch.status === "DRAFT" && openReady) return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is currently in DRAFT. Open it to begin accepting claims.</p><div className="mt-5"><ContractAction contract="rounds" method="open_epoch" args={[id]} label="Open epoch" onComplete={load} /></div></>;
     if (epoch.status === "DRAFT") return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is currently in DRAFT and will open when the claims window begins.</p><span className="button mt-5 cursor-default opacity-60">Opens in {Math.max(0, Number(epoch.claims_open) - now)}s</span></>;
     if ((epoch.status === "CLAIMS_OPEN" || epoch.status === "EVALUATING") && beforeClose) return <><p className="mt-3 max-w-xl text-sm leading-6">Funding is open while this round accepts claims. Contributors may submit completed work before the claims deadline.</p><div className="mt-5 flex flex-wrap items-start gap-3"><ContractAction contract="pool" method="fund" args={[id]} value={genToWei(1)} label="Fund pool with 1 GEN" onComplete={confirmFund} /><Link className="button primary self-start" href={`/submit/${id}`}>Submit a claim</Link></div></>;
+    if (epoch.status === "EVALUATING" && now >= Number(epoch.claims_close) && claimsTerminal) return <><p className="mt-3 max-w-xl text-sm leading-6">Claims are closed and every claim has a terminal result. Open the challenge window for independent counter-evidence.</p><div className="mt-5"><ContractAction contract="rounds" method="open_challenge" args={[id]} label="Open challenge window" onComplete={load} /></div></>;
+    if (epoch.status === "CHALLENGE" && now >= Number(epoch.challenge_close) && claimsTerminal) return <><p className="mt-3 max-w-xl text-sm leading-6">The challenge deadline has passed and all claims are terminal. Finalize the epoch allocation.</p><div className="mt-5"><ContractAction contract="rounds" method="finalize_epoch" args={[id]} label="Finalize epoch" onComplete={load} /></div></>;
     if (epoch.status === "FINALIZED") return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is finalized. The pool can now complete its settlement step.</p><div className="mt-5"><ContractAction contract="pool" method="finalize_pool" args={[id]} label="Finalize pool" onComplete={load} /></div></>;
     return <p className="mt-3 max-w-xl text-sm leading-6">The next lifecycle action will become available when the canonical deadlines and claim states permit it.</p>;
   };
