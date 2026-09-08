@@ -21,6 +21,10 @@ def _load(raw):
     return json.loads(raw)
 
 
+def _address_key(address):
+    return str(address).lower()
+
+
 @gl.contract_interface
 class Rounds:
     class View:
@@ -71,7 +75,7 @@ class BackfillPool(gl.Contract):
             _fail("funding value must be positive")
         pool = _load(self.pools[epoch_id]) if self.pools.get(epoch_id) else {"epoch_id": epoch_id, "funded": 0, "reserved": 0, "refunded": 0, "total_weight": 0, "status": "OPEN"}
         pool["funded"] += int(gl.message.value)
-        key = str(epoch_id) + "|" + str(gl.message.sender_address)
+        key = str(epoch_id) + "|" + _address_key(gl.message.sender_address)
         self.funder_credit[key] = self.funder_credit.get(key, 0) + gl.message.value
         self._save_pool(pool)
 
@@ -114,16 +118,16 @@ class BackfillPool(gl.Contract):
         epoch = self._rounds().get_epoch(epoch_id)
         if pool["status"] != "POOL_FINALIZED" or epoch["total_weight"] != 0:
             _fail("only zero-weight finalized pools are refundable")
-        key = str(epoch_id) + "|" + str(gl.message.sender_address)
+        key = str(epoch_id) + "|" + _address_key(gl.message.sender_address)
         if self.refunded.get(key):
             _fail("funder credit already refunded")
         credit = int(self.funder_credit.get(key, 0))
         if credit <= 0 or int(pool["refunded"]) + credit > int(pool["funded"]):
             _fail("no refundable credit")
-        settlement_key = str(epoch_id) + "|refund|" + str(gl.message.sender_address)
+        settlement_key = str(epoch_id) + "|refund|" + _address_key(gl.message.sender_address)
         settlement = self._settlement(settlement_key)
         if settlement["status"] == "NONE":
-            settlement = {"status": "PENDING", "type": "REFUND", "epoch_id": epoch_id, "funder": str(gl.message.sender_address), "recipient": str(gl.message.sender_address), "amount": credit, "attempts": 1, "identity": "refund:" + str(epoch_id) + ":" + str(gl.message.sender_address)}
+            settlement = {"status": "PENDING", "type": "REFUND", "epoch_id": epoch_id, "funder": _address_key(gl.message.sender_address), "recipient": str(gl.message.sender_address), "amount": credit, "attempts": 1, "identity": "refund:" + str(epoch_id) + ":" + _address_key(gl.message.sender_address)}
             self.settlements[settlement_key] = _json(settlement)
             self.refunded[key] = True
             pool["refunded"] += credit
@@ -150,11 +154,11 @@ class BackfillPool(gl.Contract):
 
     @gl.public.view
     def get_refund_settlement(self, epoch_id: int, funder: str):
-        return self._settlement(str(epoch_id) + "|refund|" + str(funder))
+        return self._settlement(str(epoch_id) + "|refund|" + _address_key(funder))
 
     @gl.public.view
     def get_funder_credit(self, epoch_id: int, funder: str):
-        return int(self.funder_credit.get(str(epoch_id) + "|" + str(funder), 0))
+        return int(self.funder_credit.get(str(epoch_id) + "|" + _address_key(funder), 0))
 
     @gl.public.view
     def is_claimed(self, epoch_id: int, claim_id: int):

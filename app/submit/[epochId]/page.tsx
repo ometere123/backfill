@@ -23,7 +23,7 @@ export default function Submit() {
         const after: any = await readContract(config.rounds, "get_epoch", [epoch]); if (Number(after.claim_count) <= Number(before.claim_count)) throw new Error("Finalized write did not increase the epoch claim count");
         let found: number | undefined; for (let index = 0; index < Number(after.claim_count); index++) { const id = Number(await readContract(config.rounds, "get_epoch_claim_id", [epoch, index])); const claim: any = await readContract(config.rounds, "get_claim", [id]); if (Number(claim.epoch_id) === epoch && String(claim.claimant).toLowerCase() === writer.toLowerCase() && claim.status === "SUBMITTED") found = id; }
         if (found === undefined) throw new Error("Canonical readback did not find the submitted claim"); setClaimId(found);
-      }, {actionKey: `submit:${epoch}:${writer.toLowerCase()}`, contract: config.rounds});
+      }, {actionKey: `submit:${epoch}:${writer.toLowerCase()}`, account: writer, chainId: "0xf22f", contract: config.rounds, onSubmitted: setHash});
       setHash(result.hash);
     } catch (err) { setError(normalizeWalletError(err)); }
   }

@@ -65,6 +65,9 @@ function isUnknownChainMessage(message: string) {
 export function normalizeWalletError(error: unknown): string {
   const code = (error as {code?: number})?.code;
   const message = String((error as {message?: unknown})?.message ?? error).toLowerCase();
+  if (message.includes("validators could not reach majority") || message.includes("undetermined")) return "Validators could not reach majority. This transaction was not executed. You can retry with a new transaction.";
+  if (message.includes("transaction finalized, but contract execution failed") || message.includes("execution failed")) return "Transaction finalized, but contract execution failed.";
+  if (message.includes("canonical state") || message.includes("state verification")) return "Transaction succeeded, but canonical state verification is unavailable or mismatched.";
   if (message.includes("studionet was not added or selected")) return "Studionet was not added or selected.";
   if (code === 4001 || message.includes("user rejected")) return message.includes("switch") || message.includes("network") ? "Network switch rejected in wallet." : "Transaction rejected in wallet.";
   if (code === -32601 || message.includes("method not found") || message.includes("unsupported")) return "This injected wallet does not support automatic network switching. Choose another injected wallet or add GenLayer Studionet manually.";

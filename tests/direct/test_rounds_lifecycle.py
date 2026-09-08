@@ -192,3 +192,50 @@ def test_inconclusive_challenge_preserves_original_claim(direct_vm, direct_deplo
     for url in _urls(): direct_vm.mock_web(url, {"status": 503, "body": ""})
     direct_vm.mock_web("https://counter.example.edu/evidence", {"status": 503, "body": ""}); rounds.resolve_challenge(claim_id)
     claim = rounds.get_claim(claim_id); assert claim["status"] == "ELIGIBLE"; assert claim["weight"] == 3; assert claim["challenge_status"] == "INCONCLUSIVE"
+
+
+def test_matching_retryable_failure_is_applied_then_a_fresh_evaluation_can_succeed(direct_vm, direct_deploy, direct_alice):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice; direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args()); rounds.open_epoch(epoch_id); direct_vm.warp("1970-01-01T00:02:00Z")
+    claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    for url in _urls(): direct_vm.mock_web(url, {"status": 503, "body": ""})
+    rounds.evaluate_claim(claim_id)
+    failed = rounds.get_claim(claim_id)
+    assert failed["status"] == "INCONCLUSIVE" and failed["weight"] == 0 and failed["attempts"] == 1 and failed["retryable"] is True
+    direct_vm.clear_mocks()
+    for index, url in enumerate(_urls(), start=1): direct_vm.mock_web(url, {"status": 200, "body": f"source {index} confirms completed attribution before cutoff"})
+    decision = {"eligibility": "ELIGIBLE", "attribution": "CONFIRMED", "completion": "CONFIRMED_BEFORE_CUTOFF", "scope_match": "YES", "impact_band": "MATERIAL", "duplicate_signal": "NONE", "evidence": [{"source": 1, "excerpt": "source 1 confirms"}, {"source": 3, "excerpt": "source 3 confirms"}], "reason": "fresh independent evaluation succeeded"}
+    direct_vm.mock_llm(r"evidence reviewer", json.dumps(decision)); rounds.evaluate_claim(claim_id)
+    recovered = rounds.get_claim(claim_id)
+    assert recovered["status"] == "ELIGIBLE" and recovered["weight"] == 3 and recovered["attempts"] == 2
+
+
+def test_retry_exhaustion_is_terminal_and_epoch_can_progress(direct_vm, direct_deploy, direct_alice):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice; direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args()); rounds.open_epoch(epoch_id); direct_vm.warp("1970-01-01T00:02:00Z")
+    claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    for url in _urls(): direct_vm.mock_web(url, {"status": 503, "body": ""})
+    rounds.evaluate_claim(claim_id); rounds.evaluate_claim(claim_id); rounds.evaluate_claim(claim_id)
+    claim = rounds.get_claim(claim_id)
+    assert claim["status"] == "INCONCLUSIVE" and claim["weight"] == 0 and claim["attempts"] == 3 and claim["retryable"] is False
+    direct_vm.warp("1970-01-01T00:03:20Z"); rounds.open_challenge(epoch_id)
+    direct_vm.warp("1970-01-01T00:05:00Z"); rounds.finalize_epoch(epoch_id)
+    assert rounds.get_epoch(epoch_id)["status"] == "FINALIZED"
+
+
+def test_unresolved_submitted_claim_can_expire_only_after_claims_close(direct_vm, direct_deploy, direct_alice):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice; direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args()); rounds.open_epoch(epoch_id); direct_vm.warp("1970-01-01T00:02:00Z")
+    claim_id = rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    with direct_vm.expect_revert("after claims close"):
+        rounds.expire_unresolved_claim(claim_id)
+    direct_vm.warp("1970-01-01T00:03:20Z"); rounds.expire_unresolved_claim(claim_id)
+    claim = rounds.get_claim(claim_id)
+    assert claim["status"] == "INCONCLUSIVE" and claim["weight"] == 0 and claim["retryable"] is False and claim["last_error"] == "UNRESOLVED_AT_DEADLINE"
+    with direct_vm.expect_revert("already terminal"):
+        rounds.expire_unresolved_claim(claim_id)
+    rounds.open_challenge(epoch_id); direct_vm.warp("1970-01-01T00:05:00Z"); rounds.finalize_epoch(epoch_id)
+    assert rounds.get_epoch(epoch_id)["status"] == "FINALIZED"

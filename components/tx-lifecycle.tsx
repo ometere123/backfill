@@ -1,3 +1,3 @@
 import type {TxStage} from "@/lib/genlayer/client";
-const stages:TxStage[]=["AWAITING_SIGNATURE","SUBMITTED","CONSENSUS","FINALIZED","EXECUTION_CONFIRMED","STATE_CONFIRMED"];
+const stages:TxStage[]=["AWAITING_SIGNATURE","SUBMITTED","CONSENSUS","DECIDED","FINALIZED","EXECUTION_CONFIRMED","STATE_CONFIRMED"];
 export function TxLifecycle({stage}:{stage?:TxStage}){if(!stage)return null; const index=stages.indexOf(stage); const failed=index<0; return <div className="plate mt-5 p-4"><div className="mono text-[10px] uppercase tracking-widest">Transaction lifecycle</div><p className={`mt-2 text-sm ${failed?"text-[var(--coral)]":""}`}>{stage}</p><div className="mt-4 flex flex-wrap gap-2">{stages.map((s,i)=><span key={s} className={`mono border px-2 py-1 text-[10px] ${i<=index?"border-[var(--blue)] bg-[var(--blue)] text-white":"border-[var(--line)] text-[#81796e]"}`}>{s}</span>)}</div></div>}

@@ -1,62 +1,53 @@
 # Backfill deployment evidence
 
-This record separates executable local/CI evidence from live Studionet evidence.
+This document separates deterministic local/CI evidence from fresh Studionet deployment evidence. The browser lifecycle is intentionally not claimed here until it has been run against this exact pair with the injected wallet.
 
-## Reviewed source and network
+## Reviewed deployment
 
-- Git commit: `be2e018273099c5a6f96b80ff74929885d0ab098`
-- Network: GenLayer Studionet, chain ID `61999`
+- Network: GenLayer Studionet
+- Chain ID: `61999`
 - RPC: `https://studio.genlayer.com/api`
 - Explorer: `https://explorer-studio.genlayer.com`
-- `genlayer-js`: `1.1.8`
-- CLI: `0.39.2`
-- CLI signer: `0xb29ead15b1e8a2420fae84de974088f67a15ccc2` (key not recorded)
+- Frontend SDK: `genlayer-js@1.1.8`
+- CLI: `genlayer@0.39.2`
+- CLI signer: `0xb29ead15b1e8a2420fae84de974088f67a15ccc2` (private key intentionally not recorded)
 
-## Fresh deployment
+### Rounds
 
-Rounds:
+- Address: `0x8b4b7Bf6247211b0a8A82f6cfBFb5552c5E98E2C`
+- Deployment transaction: `0x4e72ef1edf64fd29d3404eb5a158b91ada60e18cbd7959c55e87679b33572d93`
+- Explorer: https://explorer-studio.genlayer.com/tx/0x4e72ef1edf64fd29d3404eb5a158b91ada60e18cbd7959c55e87679b33572d93
+- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`
+- Source bytes: `24610`
+- Source SHA-256: `4cd80d7a5dde6a0f3f00abb773d39932f0dd7f2ee74e3562b44b2752b583e5ec`
+- SDK `getContractCode` parity: exact byte equality with `contracts/backfill_rounds.py`
 
-- Address: `0xAF9C5681E33Ba589acA973DFDFd8819C8E25Ade3`
-- Deployment tx: `0xb68094bbb64e403b4fbb9ff5b3e1817c63b592a73ab61e7331daae94df859811`
-- Explorer: https://explorer-studio.genlayer.com/tx/0xb68094bbb64e403b4fbb9ff5b3e1817c63b592a73ab61e7331daae94df859811
-- Source: 22,004 bytes; SHA-256 `0d3aa7fb01bb19056072b5d888f4d30a1e8fbf0a3f44be0ea4dd39450d099f89`
-- Receipt: FINALIZED, `MAJORITY_AGREE`, leader execution `SUCCESS`.
-- Schema: includes epoch-local claim indexing, challenge, evaluation, and finalization methods.
+### Pool
 
-Pool:
+- Address: `0xd37396910d67CfD19e5aCBc1dA2D5a888fE404F3`
+- Deployment transaction: `0x0011d3154dfa755c3bc762ba63deb6ed7a4346d56df6580a1c739d47f27db91e`
+- Explorer: https://explorer-studio.genlayer.com/tx/0x0011d3154dfa755c3bc762ba63deb6ed7a4346d56df6580a1c739d47f27db91e
+- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`
+- Source bytes: `7215`
+- Source SHA-256: `2b988d4a1ad4f7aa3395d858a76a31458e013686031a23d94395e125226d7404`
+- SDK `getContractCode` parity: exact byte equality with `contracts/backfill_pool.py`
+- Constructor binding: deployment calldata contains `addr#8b4b7bf6247211b0a8a82f6cfbfb5552c5e98e2c`, the exact Rounds address above.
 
-- Address: `0xDe2D2726E225F981ED5D8Bd241b4Ad0Aa9146918`
-- Deployment tx: `0x26b39e339670efc981357d3c0d39db6371e87cf91efde1a63cd22c8d872982f7`
-- Explorer: https://explorer-studio.genlayer.com/tx/0x26b39e339670efc981357d3c0d39db6371e87cf91efde1a63cd22c8d872982f7
-- Source: 7,089 bytes; SHA-256 `3137a11ea7cd4905f39318df17ddced368e95e50b92169549c0fef6a4261f76c`
-- Receipt: FINALIZED, `MAJORITY_AGREE`, leader execution `SUCCESS`.
-- Schema: constructor `rounds_address: string`; `fund` is payable; funder-credit and settlement views are present.
-- Rounds binding: deployment calldata was `{"args":[addr#af9c5681e33ba589aca973dfdfd8819c8e25ade3,]}`, exactly the final Rounds address.
+Both deployment receipts were separately queried at `FINALIZED`; `result: 6` and leader execution `SUCCESS` were present. The previous AF9/De2 pair and all earlier pairs are superseded pre-final-acceptance deployments and are not current evidence.
 
-SDK source parity was checked byte-for-byte for both deployed source responses: both equal the final main files and their recorded byte counts/hashes.
+## Deterministic verification
 
-The previous pair is superseded pre-hardening and is not current lifecycle evidence:
+- `npm run typecheck`: passed
+- `npm run lint`: passed
+- `npm run test`: 17 tests passed across 3 files
+- pinned direct harness: `16 passed` (`genlayer-test==0.29.2`, GenVM `v0.2.16`)
+- pinned Python compilation: passed
+- `npm run build`: passed; network guard passed for Studionet 61999
+- `npm run contract:sha`: passed with the hashes above
+- `genvm-lint lint` for both contracts: passed, with only missing view return-type warnings
 
-- `0xd08Af2Eb6541B449907d8be614E0A43c2D3De7eA`
-- `0xa189bc1D51255B1d15bD391A00979455c2D52aa2`
+The Windows GenVM linter schema extraction was blocked by a permissions error in the user cache; the mandatory clean Ubuntu CI schema gate remains the authoritative reproducible schema check. The local npm shim was also broken, so npm scripts were run through the installed Node/npm CLI binary without changing the repository.
 
-## Local and CI evidence
+## Settlement boundary
 
-- `npm ci`: passed.
-- `npm run network:guard`: passed.
-- `npm run typecheck`: passed.
-- `npm run lint`: passed.
-- `npm test`: 8 passed across 2 files.
-- `python -m pytest tests/direct -q`: 11 passed.
-- `python -m py_compile contracts/backfill_rounds.py contracts/backfill_pool.py`: passed.
-- `npm run build`: passed.
-- `genvm-lint` `0.11.0` fast lint: passed for both contracts, with view return-type warnings.
-- Direct harness runtime is pinned to GenVM `v0.2.16` in `tests/direct/conftest.py`.
-- CI: [run 34143595383](https://github.com/ometere123/backfill/actions/runs/34143595383) passed all configured steps.
-- Clean-install audit after pinning Vitest `3.2.6`: zero vulnerabilities reported.
-
-These checks do not prove native GEN movement or browser-wallet lifecycle state.
-
-## Settlement safety boundary
-
-Studionet `genlayer-js@1.1.8` writes do not receive a separate transaction-fee object. Payable value is passed independently. Native transfers are emitted as triggered child transactions; the contract records deterministic `PENDING` settlement and reserves accounting before emission because the contract cannot safely read a child receipt. The frontend correlates parent and child transaction IDs through the SDK. No unsafe balance-delta retry is exposed.
+The Pool records a deterministic `PENDING` reservation before emitting a native GEN child transaction. The contract does not use wallet balance deltas and does not expose an unsafe retry. A browser acceptance run must correlate the parent to the exact triggered child using `genlayer-js@1.1.8`, then record recipient, value, child status, and Explorer link. No native payout or refund is claimed here until that child evidence exists.

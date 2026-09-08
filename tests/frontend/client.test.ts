@@ -52,6 +52,17 @@ describe("write transaction safety", () => {
     expect(stages).toContain("CONSENSUS_FAILURE");
   });
 
+  it("classifies an undetermined post-submission transaction and allows a fresh attempt", async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {localStorage: {getItem: (key: string) => storage.get(key) || null, setItem: (key: string, value: string) => storage.set(key, value)}});
+    const {client}=fakeClient(); const stages:string[]=[];
+    await expect(writeAndConfirm(client,"0x1","evaluate_claim",[3],0n,s=>stages.push(s),undefined,{actionKey:"evaluate:3",account:"0xabc",chainId:"0xf22f",waitForFinalization:async()=>({statusName:"UNDETERMINED"})})).rejects.toThrow(/not executed/);
+    expect(stages).toContain("CONSENSUS_UNDETERMINED");
+    expect(getPendingTransactions("0xabc","0xf22f")).toHaveLength(0);
+    expect(JSON.parse(storage.get("backfill.transactions") || "[]")[0]).toMatchObject({hash:"0xabc",stage:"CONSENSUS_UNDETERMINED",account:"0xabc",chainId:"0xf22f"});
+    vi.unstubAllGlobals();
+  });
+
   it("identifies a triggered child by parent-derived id, recipient, and exact value", () => {
     const child = selectTriggeredTransfer("0xparent", ["0xwrong", "0xchild"], [{to:"0x0000000000000000000000000000000000000002", value:2n}, {recipient:"0x0000000000000000000000000000000000000001", value:"1000000000000000000"}], "0x0000000000000000000000000000000000000001", 1000000000000000000n);
     expect(child?.hash).toBe("0xchild");

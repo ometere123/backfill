@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ContractAction } from "@/components/contract-action";
 import { config } from "@/lib/config";
-import { readContract } from "@/lib/genlayer/client";
+import { readContract, readContractWithRetry } from "@/lib/genlayer/client";
 import { formatGen, genToWei } from "@/lib/genlayer/amounts";
 import { shortAddress } from "@/lib/genlayer/wallet";
 import { useWallet } from "@/components/wallet-provider";
@@ -19,6 +19,8 @@ export function EpochState({ id }: { id: number }) {
   const [claims, setClaims] = useState<Claim[]>([]);
   const [credit, setCredit] = useState<bigint>(0n);
   const [error, setError] = useState("");
+  const [poolReadError, setPoolReadError] = useState("");
+  const [creditReadError, setCreditReadError] = useState("");
   const { address } = useWallet();
 
   const load = async () => {
@@ -32,11 +34,23 @@ export function EpochState({ id }: { id: number }) {
       }
       setClaims(rows);
       try {
-        const currentPool = await readContract(config.pool, "get_pool", [id]);
+        const currentPool = await readContractWithRetry(config.pool, "get_pool", [id]);
         setPool(currentPool);
-        if (address) setCredit(BigInt(String(await readContract(config.pool, "get_funder_credit", [id, address]))));
-      } catch {
-        setPool(undefined);
+        setPoolReadError("");
+      } catch (poolError) {
+        const message = poolError instanceof Error ? poolError.message : String(poolError);
+        if (message.toLowerCase().includes("does not exist")) { setPool(undefined); setPoolReadError(""); }
+        else setPoolReadError("Pool state could not be verified; showing the last known canonical value.");
+      }
+      if (address) {
+        try {
+          setCredit(BigInt(String(await readContractWithRetry(config.pool, "get_funder_credit", [id, address]))));
+          setCreditReadError("");
+        } catch {
+          setCreditReadError("Funder credit could not be verified right now.");
+        }
+      } else {
+        setCredit(0n); setCreditReadError("");
       }
     } catch (readError) {
       setError(readError instanceof Error ? readError.message : "Unable to read epoch");
@@ -53,8 +67,8 @@ export function EpochState({ id }: { id: number }) {
   const beforeClose = now < Number(epoch.claims_close);
   const settlementReady = Boolean(pool);
   const confirmFund = async () => {
-    const after: any = await readContract(config.pool, "get_pool", [id]);
-    const currentCredit = address ? BigInt(String(await readContract(config.pool, "get_funder_credit", [id, address]))) : 0n;
+    const after: any = await readContractWithRetry(config.pool, "get_pool", [id]);
+    const currentCredit = address ? BigInt(String(await readContractWithRetry(config.pool, "get_funder_credit", [id, address]))) : 0n;
     if (BigInt(String(after.funded)) !== BigInt(String(pool?.funded || 0)) + genToWei(1) || currentCredit !== credit + genToWei(1)) throw new Error("Funding canonical readback mismatch");
     await load();
   };
@@ -80,7 +94,7 @@ export function EpochState({ id }: { id: number }) {
     </section>
 
     <div className="mt-12 grid gap-10 border-t-2 border-[var(--ink)] pt-6 md:grid-cols-2">
-      <section aria-labelledby="configuration-heading"><div id="configuration-heading" className="mono text-xs uppercase">Contract configuration</div><div className="mt-5 space-y-3 text-sm"><p className="break-all"><span className="mono mr-2 text-xs uppercase text-[#81796e]">Rounds</span>{config.rounds || "MISSING"}</p><p className="break-all"><span className="mono mr-2 text-xs uppercase text-[#81796e]">Pool</span>{config.pool || "MISSING"}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">State</span>Pool {pool?.status || "not created"}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Funded</span>{formatGen(BigInt(pool?.funded || 0))}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Credit</span>{formatGen(credit)}</p></div></section>
+      <section aria-labelledby="configuration-heading"><div id="configuration-heading" className="mono text-xs uppercase">Contract configuration</div><div className="mt-5 space-y-3 text-sm"><p className="break-all"><span className="mono mr-2 text-xs uppercase text-[#81796e]">Rounds</span>{config.rounds || "MISSING"}</p><p className="break-all"><span className="mono mr-2 text-xs uppercase text-[#81796e]">Pool</span>{config.pool || "MISSING"}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">State</span>{poolReadError || <>Pool {pool?.status || "not created"}</>}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Funded</span>{poolReadError ? "—" : formatGen(BigInt(pool?.funded || 0))}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Credit</span>{creditReadError || formatGen(credit)}</p></div></section>
       <section aria-labelledby="deadlines-heading"><div id="deadlines-heading" className="mono text-xs uppercase">Deadlines</div><div className="mt-5 space-y-3 text-sm"><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Claims open</span>{date(Number(epoch.claims_open))}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Claims close</span>{date(Number(epoch.claims_close))}</p><p><span className="mono mr-2 text-xs uppercase text-[#81796e]">Challenge close</span>{date(Number(epoch.challenge_close))}</p></div></section>
     </div>
 
