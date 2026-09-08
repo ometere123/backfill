@@ -10,6 +10,8 @@ declare global { interface Window { ethereum?: EIP1193Provider } }
 
 export const BACKFILL_ADDRESS_KEY = "backfill:address";
 export const STUDIONET_CHAIN_ID = `0x${config.chainId.toString(16)}`;
+export const STUDIONET_RPC_URL = "https://studio.genlayer.com/api";
+export const STUDIONET_EXPLORER_URL = "https://explorer-studio.genlayer.com";
 
 export function getWindowProvider(): EIP1193Provider {
   if (typeof window === "undefined" || !window.ethereum) throw new Error("No injected wallet provider detected.");
@@ -32,8 +34,8 @@ export async function ensureStudionet(provider: EIP1193Provider): Promise<void> 
             chainId: STUDIONET_CHAIN_ID,
             chainName: "GenLayer Studionet",
             nativeCurrency: {name: "GEN", symbol: "GEN", decimals: 18},
-            rpcUrls: [config.rpc],
-            blockExplorerUrls: [config.explorer],
+            rpcUrls: [STUDIONET_RPC_URL],
+            blockExplorerUrls: [STUDIONET_EXPLORER_URL],
           }]});
           await provider.request({method: "wallet_switchEthereumChain", params: [{chainId: STUDIONET_CHAIN_ID}]});
         } catch (addOrSwitchError) {

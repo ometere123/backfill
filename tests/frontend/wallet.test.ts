@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { ensureStudionet, normalizeWalletError, STUDIONET_CHAIN_ID } from "../../lib/genlayer/wallet";
+import { ensureStudionet, normalizeWalletError, STUDIONET_CHAIN_ID, STUDIONET_EXPLORER_URL, STUDIONET_RPC_URL } from "../../lib/genlayer/wallet";
 
 const studionetMetadata = {
   chainId: STUDIONET_CHAIN_ID,
   chainName: "GenLayer Studionet",
   nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-  rpcUrls: ["https://studio.genlayer.com/api"],
-  blockExplorerUrls: ["https://explorer-studio.genlayer.com"],
+  rpcUrls: [STUDIONET_RPC_URL],
+  blockExplorerUrls: [STUDIONET_EXPLORER_URL],
 };
 
 function provider(initialChain = STUDIONET_CHAIN_ID) {
