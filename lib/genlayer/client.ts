@@ -34,6 +34,7 @@ function readStored(): StoredTransaction[] { if (typeof window === "undefined" |
 function writeStored(records: StoredTransaction[]) { if (typeof window !== "undefined" && window.localStorage) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
 const terminalStages = ["STATE_CONFIRMED", "USER_REJECTED", "CONSENSUS_UNDETERMINED", "EXECUTION_ERROR", "STATE_MISMATCH", "CONTRACT_ERROR"];
 export function getPendingTransactions(account?: string, chainId?: string) { return readStored().filter(record => !terminalStages.includes(record.stage) && (!account || record.account?.toLowerCase()===account.toLowerCase()) && (!chainId || record.chainId?.toLowerCase()===chainId.toLowerCase())); }
+export function getStoredTransaction(actionKey: string, account?: string, chainId?: string) { return readStored().find(record => record.actionKey===actionKey && (!account || record.account?.toLowerCase()===account.toLowerCase()) && (!chainId || record.chainId?.toLowerCase()===chainId.toLowerCase())); }
 export function getTransaction(hash: string) { return readStored().find(record => record.hash === hash); }
 function remember(record: StoredTransaction) { const records = readStored().filter(item => item.actionKey !== record.actionKey); records.push(record); writeStored(records); }
 
