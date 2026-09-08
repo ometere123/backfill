@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ContractAction } from "@/components/contract-action";
 import { config } from "@/lib/config";
-import { readContract } from "@/lib/genlayer/client";
+import { readContract, readContractWithRetry } from "@/lib/genlayer/client";
 
 const formatLocal = (seconds: number) => {
   const date = new Date(seconds * 1000);
@@ -35,7 +35,7 @@ function CreateEpoch() {
   const [beforeCount, setBeforeCount] = useState(0);
   const [created, setCreated] = useState(0);
 
-  const loadCount = async () => Number(await readContract(config.rounds, "get_epoch_count"));
+  const loadCount = async () => Number(await readContractWithRetry(config.rounds, "get_epoch_count"));
   const minimumSources = Number(minSources);
   const values = [unix(workCutoff), unix(claimsOpen), unix(claimsClose), unix(challengeClose)];
   const timelineErrors = {
