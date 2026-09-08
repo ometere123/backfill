@@ -1,6 +1,6 @@
 # Backfill deployment evidence
 
-This document separates deterministic local/CI evidence from fresh Studionet deployment evidence. The browser lifecycle is intentionally not claimed here until it has been run against this exact pair with the injected wallet.
+This document separates deterministic local/CI evidence from fresh Studionet deployment evidence. It records the portions of the browser lifecycle that are actually proven against this exact pair with the injected wallet. It does not claim an eligible payout where no eligible claim was produced.
 
 ## Reviewed deployment
 

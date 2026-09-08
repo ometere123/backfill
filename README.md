@@ -4,7 +4,7 @@ Backfill is a retroactive public-goods funding ledger for critical open-source i
 
 ## Status
 
-The reviewed contracts are deployed to GenLayer Studionet 61999. Addresses, receipts, schemas, and the current live-evidence boundary are recorded in [docs/DEPLOYMENT_EVIDENCE.md](docs/DEPLOYMENT_EVIDENCE.md). A browser-wallet funded payout lifecycle is not claimed until native balance readbacks are recorded.
+The reviewed contracts are deployed to GenLayer Studionet 61999. Addresses, receipts, schemas, and the current live-evidence boundary are recorded in [docs/DEPLOYMENT_EVIDENCE.md](docs/DEPLOYMENT_EVIDENCE.md). The fresh browser-wallet evidence proves exact 1 GEN funding and a zero-weight refund with its triggered child transfer. An eligible payout is not claimed: the fresh live evaluations remained bounded `INCONCLUSIVE` with zero weight.
 
 ## Run locally
 
