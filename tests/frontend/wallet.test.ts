@@ -1,15 +1,105 @@
-import {describe,expect,it,vi} from "vitest";
-import {ensureStudionet,normalizeWalletError,STUDIONET_CHAIN_ID} from "../../lib/genlayer/wallet";
+import { describe, expect, it, vi } from "vitest";
+import { ensureStudionet, normalizeWalletError, STUDIONET_CHAIN_ID } from "../../lib/genlayer/wallet";
 
-function provider(initial="0xf22f"){
-  let chain=initial;const calls:string[]=[];
-  const value:any={calls,request:vi.fn(async({method}:any)=>{calls.push(method);if(method==="eth_chainId")return chain;if(method==="wallet_switchEthereumChain"){chain=STUDIONET_CHAIN_ID;return null}return []})};
-  return value;
+const studionetMetadata = {
+  chainId: STUDIONET_CHAIN_ID,
+  chainName: "GenLayer Studionet",
+  nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+  rpcUrls: ["https://studio.genlayer.com/api"],
+  blockExplorerUrls: ["https://explorer-studio.genlayer.com"],
+};
+
+function provider(initialChain = STUDIONET_CHAIN_ID) {
+  let chain = initialChain;
+  const calls: Array<{ method: string; params?: unknown[] }> = [];
+  const value: any = {
+    calls,
+    request: vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      calls.push({ method, params });
+      if (method === "eth_chainId") return chain;
+      if (method === "wallet_switchEthereumChain") { chain = STUDIONET_CHAIN_ID; return null; }
+      return null;
+    }),
+  };
+  return { value, calls, setChain: (next: string) => { chain = next; } };
 }
 
-describe("simple injected Studionet wallet flow",()=>{
-  it("does not switch when already on 61999 and rereads the chain",async()=>{const p=provider();await ensureStudionet(p);expect(p.calls).toEqual(["eth_chainId","eth_chainId"])});
-  it("switches another chain, and adds Studionet after 4902",async()=>{const p=provider("0x1");p.request=vi.fn(async({method}:any)=>{p.calls.push(method);if(method==="eth_chainId")return p.calls.filter((x:string)=>x===method).length>1?STUDIONET_CHAIN_ID:"0x1";if(method==="wallet_switchEthereumChain"&&p.calls.filter((x:string)=>x===method).length===1){const e:any=new Error("unknown chain");e.code=4902;throw e}return null});await ensureStudionet(p);expect(p.calls).toEqual(["eth_chainId","wallet_switchEthereumChain","wallet_addEthereumChain","wallet_switchEthereumChain","eth_chainId"])});
-  it("keeps network-switch rejection distinct from transaction rejection",async()=>{const p=provider("0x1");p.request=vi.fn(async({method}:any)=>{p.calls.push(method);if(method==="eth_chainId")return "0x1";const e:any=new Error("rejected");e.code=4001;throw e});await expect(ensureStudionet(p)).rejects.toThrow("Network switch rejected");expect(normalizeWalletError({code:4001,message:"user rejected transaction"})).toBe("Transaction rejected in wallet.")});
-  it("normalizes unsupported switching without exposing provider details",()=>{expect(normalizeWalletError({code:-32601,message:"method not found"})).toContain("does not support automatic network switching")});
+describe("injected Studionet wallet flow", () => {
+  it("does not switch or add when already on 61999 and rereads the chain", async () => {
+    const p = provider();
+    await ensureStudionet(p.value);
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "eth_chainId"]);
+  });
+
+  it("switches directly when Studionet is already configured", async () => {
+    const p = provider("0x1");
+    await ensureStudionet(p.value);
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain", "eth_chainId"]);
+    expect(p.calls.some((call) => call.method === "wallet_addEthereumChain")).toBe(false);
+  });
+
+  it("adds missing Studionet with exact metadata, switches again, and verifies the final chain", async () => {
+    const p = provider("0x1");
+    let switchCalls = 0;
+    p.value.request = vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      p.calls.push({ method, params });
+      if (method === "eth_chainId") return p.calls.filter((call) => call.method === method).length > 1 ? STUDIONET_CHAIN_ID : "0x1";
+      if (method === "wallet_switchEthereumChain" && switchCalls++ === 0) { const error: any = new Error("provider says chain is not configured"); error.code = -32000; throw error; }
+      return null;
+    });
+    await ensureStudionet(p.value);
+    expect(p.calls[2]).toEqual({ method: "wallet_addEthereumChain", params: [studionetMetadata] });
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain", "wallet_addEthereumChain", "wallet_switchEthereumChain", "eth_chainId"]);
+  });
+
+  it("does not add after a rejected switch and keeps the rejection distinct", async () => {
+    const p = provider("0x1");
+    p.value.request = vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      p.calls.push({ method, params });
+      if (method === "eth_chainId") return "0x1";
+      const error: any = new Error("user rejected the request"); error.code = 4001; throw error;
+    });
+    await expect(ensureStudionet(p.value)).rejects.toThrow("Studionet was not added or selected.");
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain"]);
+    expect(normalizeWalletError({ code: 4001, message: "user rejected transaction" })).toBe("Transaction rejected in wallet.");
+  });
+
+  it("stays wrong-network when the add-network request is rejected", async () => {
+    const p = provider("0x1");
+    let switchCalls = 0;
+    p.value.request = vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      p.calls.push({ method, params });
+      if (method === "eth_chainId") return "0x1";
+      if (method === "wallet_switchEthereumChain" && switchCalls++ === 0) { const error: any = new Error("unknown chain"); error.code = 4902; throw error; }
+      const error: any = new Error("user rejected add network"); error.code = 4001; throw error;
+    });
+    await expect(ensureStudionet(p.value)).rejects.toThrow("Studionet was not added or selected.");
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain", "wallet_addEthereumChain"]);
+    expect(normalizeWalletError(new Error("Studionet was not added or selected."))).toBe("Studionet was not added or selected.");
+  });
+
+  it("does not mark the wallet ready when the final chain reread is not 61999", async () => {
+    const p = provider("0x1");
+    p.value.request = vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      p.calls.push({ method, params });
+      if (method === "eth_chainId") return "0x1";
+      return null;
+    });
+    await expect(ensureStudionet(p.value)).rejects.toThrow("Wallet is not on GenLayer Studionet");
+  });
+
+  it("does not add for an unrelated provider error", async () => {
+    const p = provider("0x1");
+    p.value.request = vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      p.calls.push({ method, params });
+      if (method === "eth_chainId") return "0x1";
+      throw Object.assign(new Error("RPC unavailable"), { code: -32005 });
+    });
+    await expect(ensureStudionet(p.value)).rejects.toThrow("RPC unavailable");
+    expect(p.calls.map((call) => call.method)).toEqual(["eth_chainId", "wallet_switchEthereumChain"]);
+  });
+
+  it("normalizes unsupported switching without exposing provider details", () => {
+    expect(normalizeWalletError({ code: -32601, message: "method not found" })).toContain("does not support automatic network switching");
+  });
 });
