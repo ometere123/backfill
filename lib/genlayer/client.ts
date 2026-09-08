@@ -56,6 +56,14 @@ export class TransactionOutcomeError extends Error {
   constructor(public readonly stage: TxStage, message: string) { super(message); this.name = "TransactionOutcomeError"; }
 }
 
+function executionResultName(receipt: any) {
+  return receipt.txExecutionResultName
+    ?? receipt.execution_result
+    ?? receipt.txExecutionResult
+    ?? receipt.consensus_data?.leader_receipt?.find((item: any) => item.mode === "leader")?.execution_result
+    ?? receipt.consensus_data?.leader_receipt?.[0]?.execution_result;
+}
+
 async function waitForFinalized(hash: string, onStage?: (stage: TxStage) => void) {
   onStage?.("CONSENSUS");
   const decided = await readClient.waitForTransactionReceipt({hash: hash as any, status: TransactionStatus.ACCEPTED});
@@ -71,7 +79,7 @@ async function waitForFinalized(hash: string, onStage?: (stage: TxStage) => void
 export async function resumeAndConfirm(hash: string, onStage?: (stage: TxStage) => void, canonicalCheck?: CanonicalCheck) {
   try {
     const receipt = await waitForFinalized(hash, onStage);
-    const execution = receipt.txExecutionResultName ?? (receipt as any).execution_result ?? (receipt as any).txExecutionResult;
+    const execution = executionResultName(receipt);
     if (execution !== ExecutionResult.FINISHED_WITH_RETURN && execution !== "SUCCESS") throw new TransactionOutcomeError("EXECUTION_ERROR", `Transaction finalized, but contract execution failed: ${execution ?? "unknown"}`);
     onStage?.("EXECUTION_CONFIRMED");
     try { await canonicalCheck?.(); } catch (error) { throw new TransactionOutcomeError("STATE_MISMATCH", error instanceof Error ? `Transaction succeeded, but canonical state verification failed: ${error.message}` : "Transaction succeeded, but canonical state verification failed."); }
@@ -96,7 +104,7 @@ export async function writeAndConfirm(client: any, address: string, functionName
     onStage?.("CONSENSUS");
     const receipt = services.waitForFinalization ? await services.waitForFinalization({hash}) : await waitForFinalized(hash, onStage);
     onStage?.("FINALIZED");
-    const execution = receipt.txExecutionResultName ?? receipt.execution_result;
+    const execution = executionResultName(receipt);
     if (String((receipt as any).statusName ?? "") === "UNDETERMINED") { remember({...getTransaction(hash)!, stage: "CONSENSUS_UNDETERMINED"}); onStage?.("CONSENSUS_UNDETERMINED"); throw new TransactionOutcomeError("CONSENSUS_UNDETERMINED", "Validators could not reach majority. This transaction was not executed."); }
     if (execution !== ExecutionResult.FINISHED_WITH_RETURN && execution !== "SUCCESS") { remember({...getTransaction(hash)!, stage: "EXECUTION_ERROR"}); onStage?.("EXECUTION_ERROR"); throw new TransactionOutcomeError("EXECUTION_ERROR", `Transaction finalized, but contract execution failed: ${execution ?? "unknown"}`); }
     onStage?.("EXECUTION_CONFIRMED");

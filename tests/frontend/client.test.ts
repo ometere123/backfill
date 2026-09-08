@@ -63,6 +63,18 @@ describe("write transaction safety", () => {
     vi.unstubAllGlobals();
   });
 
+  it("accepts the nested Studionet leader execution result", async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {localStorage: {getItem: (key: string) => storage.get(key) || null, setItem: (key: string, value: string) => storage.set(key, value)}});
+    const {client}=fakeClient();
+    const stages:string[]=[];
+    const result=await writeAndConfirm(client,"0x1","open_epoch",[1],0n,s=>stages.push(s),undefined,{actionKey:"open:1",account:"0xabc",chainId:"0xf22f",waitForFinalization:async()=>({statusName:"FINALIZED",consensus_data:{leader_receipt:[{mode:"leader",execution_result:"SUCCESS"}]}})});
+    expect(result.hash).toBe("0xabc");
+    expect(stages).toContain("EXECUTION_CONFIRMED");
+    expect(getPendingTransactions("0xabc","0xf22f")).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
   it("identifies a triggered child by parent-derived id, recipient, and exact value", () => {
     const child = selectTriggeredTransfer("0xparent", ["0xwrong", "0xchild"], [{to:"0x0000000000000000000000000000000000000002", value:2n}, {recipient:"0x0000000000000000000000000000000000000001", value:"1000000000000000000"}], "0x0000000000000000000000000000000000000001", 1000000000000000000n);
     expect(child?.hash).toBe("0xchild");
