@@ -49,7 +49,7 @@
   .site-header .wallet-dot{width:.42rem;height:.42rem}
   .site-header .wallet-chevron{width:17px}
   footer{padding-top:2rem;padding-bottom:2rem}
-  .grain>section:first-child{padding-top:4.25rem}
+  .grain>section:first-child{padding-top:6rem}
 }
 @media (min-width:1200px){
   .grain>section:first-child{padding-top:3.25rem;padding-bottom:3.5rem}
