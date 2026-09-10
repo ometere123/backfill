@@ -1,0 +1,6 @@
+.aevum-release-verify
+.tools
+.npm-cache
+.pytest_cache
+node_modules
+.next
