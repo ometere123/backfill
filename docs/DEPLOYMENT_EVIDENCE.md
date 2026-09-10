@@ -10,7 +10,7 @@ This document separates deterministic local/CI evidence from fresh Studionet dep
 - Explorer: `https://explorer-studio.genlayer.com`
 - Frontend SDK: `genlayer-js@1.1.8`
 - CLI: `genlayer@0.39.2`
-- CLI signer: `0xb29ead15b1e8a2420fae84de974088f67a15ccc2` (private key intentionally not recorded)
+- CLI signer: `0x0d5540e0ad4b92aa0ad4e5f1b8cd645ee1e363e7` (`praest-deployer`; private key intentionally not recorded)
 
 ### Rounds — fresh revised deployment
 
@@ -36,6 +36,33 @@ This document separates deterministic local/CI evidence from fresh Studionet dep
 - Schema includes payable `fund(int)`, `finalize_pool(int)`, and `refund_unallocated(int)`.
 
 Both fresh deployment receipts were separately queried at `FINALIZED`; `result: 6` and leader execution `SUCCESS` were present. The previous `0x8b4b...`/`0xd373...` pair, the earlier AF9/De2 pair, and all earlier pairs are superseded pre-acceptance deployments and are not current evidence.
+
+## Fresh revised-pair browser lifecycle — Epoch 1
+
+This is the fresh injected-wallet lifecycle against the revised pair above. Wallet: `0xfcef676044658B5402f590daBe9E04A0F640522f`. Network: Studionet 61999. Every parent transaction below was observed as `FINALIZED`, `Accepted`, and GenVM `SUCCESS` in the Explorer.
+
+- Create epoch 1: [`0xd5e29aaeb82c5fe62804071a9526be3278b1883cea4d25c84c8869b8928afa97`](https://explorer-studio.genlayer.com/tx/0xd5e29aaeb82c5fe62804071a9526be3278b1883cea4d25c84c8869b8928afa97)
+- Open epoch 1: [`0x6f78f16cdca5e899f71db1fade3129bc5048d421ab787427c5f3b2f2b5eeb6d4`](https://explorer-studio.genlayer.com/tx/0x6f78f16cdca5e899f71db1fade3129bc5048d421ab787427c5f3b2f2b5eeb6d4)
+- Fund exactly 1 GEN: [`0x0358c47378d4e9ed00bfdbe02172ceade4008fbf290738a68800a7d8817313e7`](https://explorer-studio.genlayer.com/tx/0x0358c47378d4e9ed00bfdbe02172ceade4008fbf290738a68800a7d8817313e7)
+- Advance empty epoch after the claims deadline: [`0xf7cce6e49cccf138b44bf76e11b6b13cd045fed06e4434b703e158a047a77965`](https://explorer-studio.genlayer.com/tx/0xf7cce6e49cccf138b44bf76e11b6b13cd045fed06e4434b703e158a047a77965)
+- Finalize epoch: [`0x26c1230d6ec903c155067c405431bcf8da59c3b0c3c5409314f42c269df9181a`](https://explorer-studio.genlayer.com/tx/0x26c1230d6ec903c155067c405431bcf8da59c3b0c3c5409314f42c269df9181a)
+- Finalize pool: [`0xe96c9335187b7c34ea41236aa75c7f448db9c2037e8c46ae3deb86f090fc9ebf`](https://explorer-studio.genlayer.com/tx/0xe96c9335187b7c34ea41236aa75c7f448db9c2037e8c46ae3deb86f090fc9ebf)
+- Refund parent: [`0xeb7aea67a8643dbfb2b88f2ae173bc46c7b98fbc3808773213e26634d8f2b53f`](https://explorer-studio.genlayer.com/tx/0xeb7aea67a8643dbfb2b88f2ae173bc46c7b98fbc3808773213e26634d8f2b53f)
+- Triggered refund child: [`0x45b4be8a2143c7390d3b1b370af923eef1c0d437f9616918e690e3ce5247e2ef`](https://explorer-studio.genlayer.com/tx/0x45b4be8a2143c7390d3b1b370af923eef1c0d437f9616918e690e3ce5247e2ef)
+
+Canonical readbacks after reload:
+
+- After creation: epoch `1`, `DRAFT`, `claim_count = 0`.
+- After opening: `CLAIMS_OPEN`, `claim_count = 0`.
+- After funding: Pool `OPEN`, `funded = 1000000000000000000` wei, funder credit `1000000000000000000` wei.
+- After `advance_empty_epoch`: epoch `CHALLENGE`, zero claims, total weight `0`.
+- After finalization: epoch `FINALIZED`, total weight `0`.
+- After pool finalization: Pool `POOL_FINALIZED`, funded `1000000000000000000` wei, zero total weight.
+- After refund and reload: settlement identity `refund:1:0xfcef676044658b5402f590dabe9e04a0f640522f`, amount `1000000000000000000` wei, contract settlement `PENDING`, and reserved/refund accounting reflects the initiated settlement.
+
+The child Explorer record independently shows `FINALIZED`, `Send`, Pool `0x2eBB4022C2aD57280bA8C0231D61448A3a77CdDa` → wallet `0xfcef676044658B5402f590daBe9E04A0F640522f`, value `1 GEN`. This is native transfer evidence; the contract remains `PENDING` because the external child receipt is not inspected by the Pool contract.
+
+No claim was submitted in Epoch 1, so no eligible payout path or payout child exists in this fresh lifecycle. This is intentionally a zero-claim refund proof, not positive-payout evidence.
 
 ## Deterministic verification
 
