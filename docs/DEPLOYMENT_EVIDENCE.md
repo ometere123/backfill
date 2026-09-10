@@ -12,28 +12,30 @@ This document separates deterministic local/CI evidence from fresh Studionet dep
 - CLI: `genlayer@0.39.2`
 - CLI signer: `0xb29ead15b1e8a2420fae84de974088f67a15ccc2` (private key intentionally not recorded)
 
-### Rounds
+### Rounds — fresh revised deployment
 
-- Address: `0x8b4b7Bf6247211b0a8A82f6cfBFb5552c5E98E2C`
-- Deployment transaction: `0x4e72ef1edf64fd29d3404eb5a158b91ada60e18cbd7959c55e87679b33572d93`
-- Explorer: https://explorer-studio.genlayer.com/tx/0x4e72ef1edf64fd29d3404eb5a158b91ada60e18cbd7959c55e87679b33572d93
-- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`
-- Source bytes: `24610`
-- Source SHA-256: `4cd80d7a5dde6a0f3f00abb773d39932f0dd7f2ee74e3562b44b2752b583e5ec`
+- Address: `0xb6d1224Ed5CbaD3da9E81c8F1282870d9acD3b01`
+- Deployment transaction: `0xbf752fce0d595cf32bc248514c01a168bceafd784ede29b0ebddb3bc4697dfdf`
+- Explorer: https://explorer-studio.genlayer.com/tx/0xbf752fce0d595cf32bc248514c01a168bceafd784ede29b0ebddb3bc4697dfdf
+- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`; `result: 6`
+- Source bytes: `25386`
+- Source SHA-256: `2d24ebbd67a3f406c0a05df6daea81da1cd051b4f29b4f03ddc5a24f3bbd3f66`
 - SDK `getContractCode` parity: exact byte equality with `contracts/backfill_rounds.py`
+- Schema includes `advance_empty_epoch(int)`.
 
-### Pool
+### Pool — fresh revised deployment
 
-- Address: `0xd37396910d67CfD19e5aCBc1dA2D5a888fE404F3`
-- Deployment transaction: `0x0011d3154dfa755c3bc762ba63deb6ed7a4346d56df6580a1c739d47f27db91e`
-- Explorer: https://explorer-studio.genlayer.com/tx/0x0011d3154dfa755c3bc762ba63deb6ed7a4346d56df6580a1c739d47f27db91e
-- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`
+- Address: `0x2eBB4022C2aD57280bA8C0231D61448A3a77CdDa`
+- Deployment transaction: `0xb78584d2fb5aa54d6301cc821dccce1b173e0b1f917e9332edc8a9cb8df3bebc`
+- Explorer: https://explorer-studio.genlayer.com/tx/0xb78584d2fb5aa54d6301cc821dccce1b173e0b1f917e9332edc8a9cb8df3bebc
+- Receipt: `FINALIZED`; consensus `MAJORITY_AGREE`; leader execution `SUCCESS`; `result: 6`
 - Source bytes: `7215`
 - Source SHA-256: `2b988d4a1ad4f7aa3395d858a76a31458e013686031a23d94395e125226d7404`
 - SDK `getContractCode` parity: exact byte equality with `contracts/backfill_pool.py`
-- Constructor binding: deployment calldata contains `addr#8b4b7bf6247211b0a8a82f6cfbfb5552c5e98e2c`, the exact Rounds address above.
+- Constructor binding: deployment calldata contains `addr#b6d1224ed5cbad3da9e81c8f1282870d9acd3b01`, the exact fresh Rounds address above.
+- Schema includes payable `fund(int)`, `finalize_pool(int)`, and `refund_unallocated(int)`.
 
-Both deployment receipts were separately queried at `FINALIZED`; `result: 6` and leader execution `SUCCESS` were present. The previous AF9/De2 pair and all earlier pairs are superseded pre-final-acceptance deployments and are not current evidence.
+Both fresh deployment receipts were separately queried at `FINALIZED`; `result: 6` and leader execution `SUCCESS` were present. The previous `0x8b4b...`/`0xd373...` pair, the earlier AF9/De2 pair, and all earlier pairs are superseded pre-acceptance deployments and are not current evidence.
 
 ## Deterministic verification
 
@@ -48,9 +50,11 @@ Both deployment receipts were separately queried at `FINALIZED`; `result: 6` and
 
 The Windows GenVM linter schema extraction was blocked by a permissions error in the user cache; the mandatory clean Ubuntu CI schema gate remains the authoritative reproducible schema check. The local npm shim was also broken, so npm scripts were run through the installed Node/npm CLI binary without changing the repository.
 
-## Fresh browser-wallet lifecycle evidence
+## Historical browser-wallet lifecycle evidence — superseded pair
 
-All hashes below are from the injected wallet `0xfcef676044658B5402f590daBe9E04A0F640522f` on Studionet 61999. Every listed parent was observed as `FINALIZED` in the production frontend and/or Explorer; native child observations are recorded separately.
+The lifecycle hashes below were produced against the superseded `0x8b4b...` / `0xd373...` deployment pair. They are retained as historical evidence only and must not be combined with the fresh revised pair above. A new lifecycle against the fresh pair is still required.
+
+All historical hashes below are from the injected wallet `0xfcef676044658B5402f590daBe9E04A0F640522f` on Studionet 61999. Every listed parent was observed as `FINALIZED` in the production frontend and/or Explorer; native child observations are recorded separately.
 
 ### Epoch 7 forensic evaluation evidence
 
@@ -113,3 +117,7 @@ Both accepted evaluations produced canonical `INCONCLUSIVE`, `weight = 0`, `last
 ## Settlement boundary
 
 The Pool records a deterministic `PENDING` reservation before emitting a native GEN child transaction. The contract does not use wallet balance deltas and does not expose an unsafe retry. The Epoch 4 refund child was correlated with `genlayer-js@1.1.8` and is recorded above. No payout is claimed because the fresh eligible-claim attempt remained `INCONCLUSIVE` with zero weight.
+
+For the revised Pool, child-transfer reconciliation remains an off-chain evidence step: after a parent reaches finality, the frontend queries the parent’s triggered transaction IDs and selects the child whose recipient and exact native value match the canonical settlement. The contract intentionally keeps the reservation `PENDING` because it cannot safely inspect the external child receipt; no retry is exposed after a pending settlement.
+
+Weighted payouts use integer floor division, `funded * weight // total_weight`, and reserve-cap checks. Any integer remainder stays explicitly unallocated in the Pool rather than being overpaid. Zero-weight finalized pools refund each recorded funder credit exactly once, so the zero-weight path has no rounding loss.
