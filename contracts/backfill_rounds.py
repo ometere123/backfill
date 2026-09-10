@@ -238,6 +238,24 @@ class BackfillRounds(gl.Contract):
         self._save_epoch(epoch)
         return int(claim_id)
 
+    @gl.public.write
+    def advance_empty_epoch(self, epoch_id: int):
+        """Open the challenge phase for a round that received no claims.
+
+        This is permissionless liveness maintenance.  It is deliberately
+        restricted to CLAIMS_OPEN and claim_count == 0 so it cannot bypass an
+        active claim or skip evaluation of any submitted work.
+        """
+        epoch = self._epoch(epoch_id)
+        if int(epoch["claim_count"]) != 0:
+            _fail("epoch has active claims")
+        if epoch["status"] != "CLAIMS_OPEN":
+            _fail("empty epoch is not in claims open")
+        if _now() < epoch["claims_close"]:
+            _fail("empty epoch cannot advance before claims close")
+        epoch["status"] = "CHALLENGE"
+        self._save_epoch(epoch)
+
     def _sources(self, claim, counter_url=""):
         urls = [claim["repo_url"], claim["primary_url"], claim["secondary_url"], claim["corroboration_url"]]
         if counter_url:

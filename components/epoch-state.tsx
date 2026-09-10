@@ -17,6 +17,7 @@ export function EpochState({ id }: { id: number }) {
   const [epoch, setEpoch] = useState<Epoch>();
   const [pool, setPool] = useState<any>();
   const [claims, setClaims] = useState<Claim[]>([]);
+  const [claimsReadError, setClaimsReadError] = useState("");
   const [credit, setCredit] = useState<bigint>(0n);
   const [error, setError] = useState("");
   const [poolReadError, setPoolReadError] = useState("");
@@ -27,12 +28,17 @@ export function EpochState({ id }: { id: number }) {
     try {
       const current = await readContract(config.rounds, "get_epoch", [id]) as Epoch;
       setEpoch(current);
-      const rows: Claim[] = [];
-      for (let index = 0; index < Number(current.claim_count); index += 1) {
-        const claimId = Number(await readContract(config.rounds, "get_epoch_claim_id", [id, index]));
-        rows.push({ ...await readContract(config.rounds, "get_claim", [claimId]) as Claim, id: claimId });
+      try {
+        const rows: Claim[] = [];
+        for (let index = 0; index < Number(current.claim_count); index += 1) {
+          const claimId = Number(await readContract(config.rounds, "get_epoch_claim_id", [id, index]));
+          rows.push({ ...await readContract(config.rounds, "get_claim", [claimId]) as Claim, id: claimId });
+        }
+        setClaims(rows);
+        setClaimsReadError("");
+      } catch (claimsError) {
+        setClaimsReadError(claimsError instanceof Error ? claimsError.message : "Claim records could not be verified.");
       }
-      setClaims(rows);
       try {
         const currentPool = await readContractWithRetry(config.pool, "get_pool", [id]);
         setPool(currentPool);
@@ -78,6 +84,7 @@ export function EpochState({ id }: { id: number }) {
     if (epoch.status === "DRAFT" && openReady) return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is currently in DRAFT. Open it to begin accepting claims.</p><div className="mt-5"><ContractAction contract="rounds" method="open_epoch" args={[id]} label="Open epoch" onComplete={load} /></div></>;
     if (epoch.status === "DRAFT") return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is currently in DRAFT and will open when the claims window begins.</p><span className="button mt-5 cursor-default opacity-60">Opens in {Math.max(0, Number(epoch.claims_open) - now)}s</span></>;
     if ((epoch.status === "CLAIMS_OPEN" || epoch.status === "EVALUATING") && beforeClose) return <><p className="mt-3 max-w-xl text-sm leading-6">Funding is open while this round accepts claims. Contributors may submit completed work before the claims deadline.</p><div className="mt-5 flex flex-wrap items-start gap-3"><ContractAction contract="pool" method="fund" args={[id]} value={genToWei(1)} label="Fund pool with 1 GEN" onComplete={confirmFund} /><Link className="button primary self-start" href={`/submit/${id}`}>Submit a claim</Link></div></>;
+    if (epoch.status === "CLAIMS_OPEN" && now >= Number(epoch.claims_close) && Number(epoch.claim_count) === 0) return <><p className="mt-3 max-w-xl text-sm leading-6">The claims window closed without submissions. Advance this empty round into its challenge phase so the funded pool can settle safely.</p><div className="mt-5"><ContractAction contract="rounds" method="advance_empty_epoch" args={[id]} label="Advance empty epoch" onComplete={load} /></div></>;
     if (epoch.status === "EVALUATING" && now >= Number(epoch.claims_close) && claimsTerminal) return <><p className="mt-3 max-w-xl text-sm leading-6">Claims are closed and every claim has a terminal result. Open the challenge window for independent counter-evidence.</p><div className="mt-5"><ContractAction contract="rounds" method="open_challenge" args={[id]} label="Open challenge window" onComplete={load} /></div></>;
     if (epoch.status === "CHALLENGE" && now >= Number(epoch.challenge_close) && claimsTerminal) return <><p className="mt-3 max-w-xl text-sm leading-6">The challenge deadline has passed and all claims are terminal. Finalize the epoch allocation.</p><div className="mt-5"><ContractAction contract="rounds" method="finalize_epoch" args={[id]} label="Finalize epoch" onComplete={load} /></div></>;
     if (epoch.status === "FINALIZED") return <><p className="mt-3 max-w-xl text-sm leading-6">This epoch is finalized. The pool can now complete its settlement step.</p><div className="mt-5"><ContractAction contract="pool" method="finalize_pool" args={[id]} label="Finalize pool" onComplete={load} /></div></>;
@@ -93,7 +100,7 @@ export function EpochState({ id }: { id: number }) {
 
     <section className="mt-12 border-t-2 border-[var(--ink)] pt-5" aria-labelledby="claims-heading">
       <div id="claims-heading" className="mono text-xs uppercase">Claims in this epoch</div>
-      <div className="mt-4 grid gap-3">{claims.length ? claims.map((claim) => <Link className="plate block p-4" href={`/claim/${claim.id}`} key={claim.id}><div className="mono text-xs">CLAIM {claim.id} / {claim.status}</div><div className="serif mt-2 text-2xl">{claim.title}</div><div className="mt-2 text-sm">{shortAddress(claim.claimant)} · {claim.impact_band} · weight {claim.weight}</div></Link>) : <p className="text-sm">No claims have been submitted.</p>}</div>
+      <div className="mt-4 grid gap-3">{claims.length ? claims.map((claim) => <Link className="plate block p-4" href={`/claim/${claim.id}`} key={claim.id}><div className="mono text-xs">CLAIM {claim.id} / {claim.status}</div><div className="serif mt-2 text-2xl">{claim.title}</div><div className="mt-2 text-sm">{shortAddress(claim.claimant)} · {claim.impact_band} · weight {claim.weight}</div></Link>) : Number(epoch.claim_count) > 0 ? <p className="border-l-4 border-[var(--coral)] p-4 text-sm">{claimsReadError || "Claims are indexed, but their canonical dossiers are not available yet."}</p> : <p className="text-sm">No claims have been submitted.</p>}</div>
     </section>
 
     <div className="mt-12 grid gap-10 border-t-2 border-[var(--ink)] pt-6 md:grid-cols-2">

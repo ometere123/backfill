@@ -239,3 +239,34 @@ def test_unresolved_submitted_claim_can_expire_only_after_claims_close(direct_vm
         rounds.expire_unresolved_claim(claim_id)
     rounds.open_challenge(epoch_id); direct_vm.warp("1970-01-01T00:05:00Z"); rounds.finalize_epoch(epoch_id)
     assert rounds.get_epoch(epoch_id)["status"] == "FINALIZED"
+
+
+def test_zero_claim_epoch_can_advance_after_deadline_but_never_bypass_claims(direct_vm, direct_deploy, direct_alice):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice
+    direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args())
+    rounds.open_epoch(epoch_id)
+
+    with direct_vm.expect_revert("before claims close"):
+        rounds.advance_empty_epoch(epoch_id)
+    direct_vm.warp("1970-01-01T00:03:20Z")
+    rounds.advance_empty_epoch(epoch_id)
+    assert rounds.get_epoch(epoch_id)["status"] == "CHALLENGE"
+
+    with direct_vm.expect_revert("not in claims open"):
+        rounds.advance_empty_epoch(epoch_id)
+
+
+def test_empty_epoch_transition_rejects_a_submitted_claim(direct_vm, direct_deploy, direct_alice):
+    rounds = direct_deploy("contracts/backfill_rounds.py")
+    direct_vm.sender = direct_alice
+    direct_vm.warp("1970-01-01T00:01:40Z")
+    epoch_id = rounds.create_epoch(*_epoch_args())
+    rounds.open_epoch(epoch_id)
+    direct_vm.warp("1970-01-01T00:02:00Z")
+    rounds.submit_claim(epoch_id, "Fix", "bug", *_urls())
+    direct_vm.warp("1970-01-01T00:03:20Z")
+    with direct_vm.expect_revert("active claims"):
+        rounds.advance_empty_epoch(epoch_id)
+    assert rounds.get_epoch(epoch_id)["status"] == "EVALUATING"

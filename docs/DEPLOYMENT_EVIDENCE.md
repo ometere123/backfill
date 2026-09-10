@@ -52,6 +52,34 @@ The Windows GenVM linter schema extraction was blocked by a permissions error in
 
 All hashes below are from the injected wallet `0xfcef676044658B5402f590daBe9E04A0F640522f` on Studionet 61999. Every listed parent was observed as `FINALIZED` in the production frontend and/or Explorer; native child observations are recorded separately.
 
+### Epoch 7 forensic evaluation evidence
+
+Epoch 7 was created specifically for a fresh positive-claim attempt using four pinned, real HTTPS sources: a pinned GenLayer CLI commit, its pinned raw implementation file, official GenLayer transaction documentation, and an independent authoritative corroborating page. The claim was submitted through the production frontend and discovered as global claim ID `3`.
+
+- Create epoch 7: [`0x6b8410c228dbcf3dbe217a21936736c35067c373eb177843090154dacd46b690`](https://explorer-studio.genlayer.com/tx/0x6b8410c228dbcf3dbe217a21936736c35067c373eb177843090154dacd46b690)
+- Open epoch 7: [`0x83a3881b8a2649da0693442e8ace08b08933c32e92ef145ed9287eeb0385b680`](https://explorer-studio.genlayer.com/tx/0x83a3881b8a2649da0693442e8ace08b08933c32e92ef145ed9287eeb0385b680)
+- Fund exactly 1 GEN: [`0xb0f15985f60226a90cef8da6be4fb7438a90ee27a0c51f94e9a2b9fc31444678`](https://explorer-studio.genlayer.com/tx/0xb0f15985f60226a90cef8da6be4fb7438a90ee27a0c51f94e9a2b9fc31444678)
+- Submit claim 3: [`0x271c05795e0e794e38ec4470a5f68c94aafec0c4f56cc144201f0ac506402e27`](https://explorer-studio.genlayer.com/tx/0x271c05795e0e794e38ec4470a5f68c94aafec0c4f56cc144201f0ac506402e27)
+- Evaluate claim 3: [`0x2483e9f9d686afb1a23f411bb6fb21f1394cada656ca968badf519c4e4d5b5cc`](https://explorer-studio.genlayer.com/tx/0x2483e9f9d686afb1a23f411bb6fb21f1394cada656ca968badf519c4e4d5b5cc)
+
+The evaluation receipt was `FINALIZED`, consensus `Accepted`, and GenVM execution `SUCCESS`. Its leader equivalence output decodes to the bounded envelope `{"kind":"RETRYABLE_ERROR","code":"LLM_MALFORMED"}`. The Explorer's raw consensus data shows two agreeing validator receipts with successful execution and the same accepted consensus round; the leader receipt also reports successful execution and contains the same bounded error envelope. This is therefore not evidenced as validator disagreement, an execution revert, or a protocol-level `UNDETERMINED` transaction.
+
+The leader and validator receipt detail exposes only the bounded code. Stdout is empty, stderr contains only the GenVM pickling-storage warning, and `raw_error`, `error_code`, and `error_description` are null. The Explorer does not expose the original model response or parser exception. Consequently, this live receipt cannot distinguish among a missing JSON field, invalid enum, malformed evidence array, grounding failure, or another model/parser-shape issue. No narrower root cause is claimed.
+
+After reload, canonical claim state was:
+
+- Claim ID: `3`; status: `INCONCLUSIVE`
+- Weight: `0`; impact band: `NONE`
+- Reason/last error: `LLM_MALFORMED`
+- Evidence: none stored
+- Pool: `OPEN`; funded amount: `1000000000000000000` wei (`1.0000 GEN`)
+- Funder credit: `1000000000000000000` wei (`1.0000 GEN`)
+- No payout child transaction exists because the claim has zero weight.
+
+The production claim page exposes the terminal canonical state and the finalized evaluation parent hash. The live UI did not expose the attempts field directly; the observed state transition proves one accepted evaluation execution, but no claim is made about an unexposed numeric attempt counter beyond the canonical terminal `INCONCLUSIVE` result.
+
+> Live testing proves epoch creation, pool funding, canonical funder-credit reconciliation, finalized evaluation failure handling, retry exhaustion, and terminal `INCONCLUSIVE` state. No eligible claim was produced during the live run, so positive-weight payout and triggered payout-transfer evidence remain unverified. This is an unexercised outcome branch, not evidence that the payout path failed.
+
 ### Zero-weight refund path (Epoch 4)
 
 - Create: [`0xc5d0e8f8974833b8165e83341e95e35697d447bf0f461fe25d79fef7f5c89330`](https://explorer-studio.genlayer.com/tx/0xc5d0e8f8974833b8165e83341e95e35697d447bf0f461fe25d79fef7f5c89330), canonical epoch `4`
